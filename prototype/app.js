@@ -1,333 +1,36 @@
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
-const desktop = Boolean(window.directorcut?.desktop);
-const video = $('#video');
-
-const state = {
-  version: 2,
-  name: 'Untitled Project',
-  mode: 'Co-edit',
-  script: '',
-  scenes: [],
-  media: null,
-  duration: 0,
-  transcript: null,
-  edits: JSON.parse(localStorage.getItem('directorcut.learning') || '[]'),
-  marks: [],
-  splitPoints: [],
-  removeRanges: [],
-  inPoint: null,
-  outPoint: null,
-  undo: []
-};
-
-function tc(t) {
-  if (!Number.isFinite(t)) t = 0;
-  const ms = Math.floor((t % 1) * 1000);
-  const s = Math.floor(t) % 60;
-  const m = Math.floor(t / 60) % 60;
-  const h = Math.floor(t / 3600);
-  return [h,m,s].map(x => String(x).padStart(2,'0')).join(':') + '.' + String(ms).padStart(3,'0');
-}
-function say(text, type='ai') {
-  const d = document.createElement('div');
-  d.className = 'message ' + type;
-  d.textContent = text;
-  $('#activity').appendChild(d);
-  $('#activity').scrollTop = 99999;
-}
-function persistLearning() {
-  localStorage.setItem('directorcut.learning', JSON.stringify(state.edits));
-}
-function status() {
-  $('#status').textContent = `${state.scenes.length} scenes · ${state.edits.length} learned decisions · ${state.removeRanges.length} cuts`;
-}
-function snapshot() {
-  return JSON.parse(JSON.stringify({ removeRanges: state.removeRanges, splitPoints: state.splitPoints, marks: state.marks }));
-}
-function pushUndo() {
-  state.undo.push(snapshot());
-  if (state.undo.length > 100) state.undo.shift();
-}
-function restore(s) {
-  state.removeRanges = s.removeRanges || [];
-  state.splitPoints = s.splitPoints || [];
-  state.marks = s.marks || [];
-  renderTimeline();
-}
-function scenePlan(script) {
-  const blocks = script.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-  return blocks.map((text, i) => {
-    const words = text.split(/\s+/).length;
-    return {
-      n: i + 1,
-      text,
-      purpose: i === 0 ? 'Hook' : /\d/.test(text) ? 'Evidence' : 'Narrative',
-      visual: i === 0 ? 'Presenter / strongest visual' : /\d/.test(text) ? 'Evidence + motion callout' : 'Presenter / semantic B-roll',
-      performance: i === 0 ? 'Controlled start, strong final phrase' : 'Natural delivery',
-      dur: Math.max(2.5, words / 150 * 60)
-    };
-  });
-}
-function projectObject() {
-  state.name = $('#projectName').value.trim() || 'Untitled Project';
-  return {
-    version: 2,
-    name: state.name,
-    mode: state.mode,
-    script: state.script,
-    scenes: state.scenes,
-    media: state.media,
-    transcript: state.transcript,
-    marks: state.marks,
-    splitPoints: state.splitPoints,
-    removeRanges: state.removeRanges,
-    learning: state.edits
-  };
-}
-function loadProjectObject(p) {
-  state.name = p.name || 'Untitled Project';
-  state.mode = p.mode || 'Co-edit';
-  state.script = p.script || '';
-  state.scenes = p.scenes || [];
-  state.media = p.media || null;
-  state.duration = Number(p.media?.duration || 0);
-  state.transcript = p.transcript || null;
-  state.marks = p.marks || [];
-  state.splitPoints = p.splitPoints || [];
-  state.removeRanges = p.removeRanges || [];
-  if (Array.isArray(p.learning)) state.edits = p.learning;
-  $('#projectName').value = state.name;
-  if (state.media?.url) setVideoSource(state.media.url);
-  else if (state.media?.path && desktop) setVideoSource('file://' + state.media.path.replace(/\\/g,'/'));
-  renderComposer();
-  renderMediaInfo();
-  renderTimeline();
-  setMode(state.mode);
-}
-function renderMediaInfo() {
-  if (!state.media) { $('#mediaInfo').textContent = 'No media loaded.'; return; }
-  const dims = state.media.width ? `${state.media.width}×${state.media.height}` : 'dimensions unknown';
-  $('#mediaInfo').textContent = `${state.media.name} · ${tc(state.media.duration)} · ${dims} · ${state.media.videoCodec || 'video'}`;
-}
-function renderComposer() {
-  if (state.transcript?.words?.length) {
-    $('#transcriptMode').textContent = `TRANSCRIPT · ${state.transcript.words.length} WORDS`;
-    $('#transcript').textContent = state.transcript.text || state.transcript.words.map(w => w.text).join(' ');
-  } else {
-    $('#transcriptMode').textContent = 'SCRIPT';
-    $('#transcript').textContent = state.script || 'Load a script or run local transcription. Word-timestamp transcripts let DirectorCut jump directly to spoken phrases.';
-  }
-}
-function addRemovedOverlay(lane, total) {
-  state.removeRanges.forEach(r => {
-    const d = document.createElement('div');
-    d.className = 'removedRange';
-    d.style.left = `${r.start / total * 100}%`;
-    d.style.width = `${Math.max(0.4, (r.end-r.start) / total * 100)}%`;
-    d.title = `Removed ${tc(r.start)} → ${tc(r.end)}`;
-    lane.appendChild(d);
-  });
-}
-function renderTimeline() {
-  ['gLane','vLane','aLane','cLane'].forEach(id => $('#'+id).innerHTML = '');
-  const total = Math.max(state.duration, state.scenes.reduce((a,s) => a+s.dur,0), 1);
-  let cursor = 0;
-  state.scenes.forEach(s => {
-    const left = cursor / total * 100;
-    const width = Math.max(1.2, s.dur / total * 100);
-    [['vLane',''],['aLane','audio'],['cLane','caption']].forEach(([id,cl]) => {
-      const d = document.createElement('div');
-      d.className = 'clip ' + cl;
-      d.style.left = left + '%';
-      d.style.width = width + '%';
-      d.textContent = `S${String(s.n).padStart(2,'0')} ${s.purpose}`;
-      d.title = s.text;
-      $('#'+id).appendChild(d);
-    });
-    if (s.purpose === 'Evidence') {
-      const g = document.createElement('div');
-      g.className = 'clip graphic';
-      g.style.left = (left + width * .25) + '%';
-      g.style.width = Math.max(1, width * .5) + '%';
-      g.textContent = 'Motion callout';
-      $('#gLane').appendChild(g);
-    }
-    cursor += s.dur;
-  });
-  ['vLane','aLane'].forEach(id => addRemovedOverlay($('#'+id), total));
-  state.splitPoints.forEach(p => {
-    const line = document.createElement('div');
-    line.className = 'splitMarker';
-    line.style.left = `${p/total*100}%`;
-    $('#vLane').appendChild(line);
-  });
-  status();
-}
-function setVideoSource(url) {
-  video.src = url;
-  $('#emptyMonitor').style.display = 'none';
-}
-async function acceptBrowserVideo(file) {
-  if (!file) return;
-  setVideoSource(URL.createObjectURL(file));
-  state.media = { name: file.name, path: null, url: null, duration: 0 };
-  say(`Imported ${file.name}. Browser mode can preview it; desktop mode is required for FFmpeg export.`);
-}
-async function acceptDesktopMedia(media) {
-  if (!media) return;
-  state.media = media;
-  state.duration = Number(media.duration || 0);
-  setVideoSource(media.url);
-  renderMediaInfo();
-  renderTimeline();
-  say(`Imported ${media.name}. FFmpeg read ${tc(media.duration)} of media locally.`);
-}
-async function acceptScript(text, name='script') {
-  state.script = text;
-  state.scenes = scenePlan(text);
-  renderComposer();
-  renderTimeline();
-  say(`${name} analyzed: ${state.scenes.length} scenes. Director created a first scene plan.`);
-}
-function setMode(mode) {
-  state.mode = mode;
-  $$('[data-mode]').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
-  $('#modeLabel').textContent = mode.toUpperCase() + ' MODE';
-}
-function learn(action, context, replacement) {
-  state.edits.push({ kind:'director-correction', action, context, replacement, at:new Date().toISOString() });
-  persistLearning();
-  status();
-}
-function proposal(text, context='') {
-  $('#proposalText').textContent = text;
-  $('#proposal').dataset.context = context;
-  $('#proposal').hidden = false;
-}
-function heuristicDirector(q) {
-  const low = q.toLowerCase();
-  if (low.includes('first') || low.includes('opening') || low.includes('hook')) return 'Tighten the opening: remove dead air, move the strongest evidence earlier, and avoid a decorative transition before the hook.';
-  if (low.includes('subtitle') || low.includes('caption')) return 'Regenerate captions in short phrase groups, emphasize key words, and keep them inside safe areas. Exportable SRT is already available after local transcription.';
-  if (low.includes('where') || low.includes('say') || low.includes('said')) return 'I can search the local word-timestamp transcript and jump the playhead to the exact phrase. Use Composer search, or tell me the phrase.';
-  if (low.includes('cut') || low.includes('remove')) return 'Set an In and Out point around the unwanted section, then apply a reversible Delete In→Out edit. The desktop export will render the kept ranges with FFmpeg.';
-  return 'I would analyze the selected scene, compare it with your learned style, and use the smallest reversible timeline operation.';
-}
-function transcriptFind(phrase) {
-  const words = state.transcript?.words;
-  if (!words?.length) return null;
-  const tokens = phrase.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  const norm = s => (s || '').toLowerCase().replace(/[^\p{L}\p{N}'’-]+/gu,'');
-  for (let i=0;i<=words.length-tokens.length;i++) {
-    let ok = true;
-    for (let j=0;j<tokens.length;j++) if (norm(words[i+j].text) !== norm(tokens[j])) { ok=false; break; }
-    if (ok) return { start: words[i].start_ms/1000, end: words[i+tokens.length-1].end_ms/1000 };
-  }
-  return null;
-}
-
-$('#videoInput').style.display = desktop ? 'none' : 'block';
-$('#scriptInput').style.display = desktop ? 'none' : 'block';
-$('#pickVideo').style.display = desktop ? 'block' : 'none';
-$('#pickScript').style.display = desktop ? 'block' : 'none';
-$('#openProject').disabled = !desktop;
-$('#saveProject').disabled = !desktop;
-$('#exportVideo').disabled = !desktop;
-$('#exportSrt').disabled = !desktop;
-$('#transcribe').disabled = !desktop;
-
-$('#videoInput').addEventListener('change', e => acceptBrowserVideo(e.target.files[0]));
-$('#scriptInput').addEventListener('change', async e => { const f=e.target.files[0]; if(f) acceptScript(await f.text(), f.name); });
-$('#pickVideo').onclick = async () => { try { await acceptDesktopMedia(await window.directorcut.pickMedia()); } catch(e) { say(`Import failed: ${e.message}`); } };
-$('#pickScript').onclick = async () => { try { const s=await window.directorcut.pickScript(); if(s) acceptScript(s.text,s.name); } catch(e) { say(`Script import failed: ${e.message}`); } };
-
-video.addEventListener('loadedmetadata', () => {
-  if (!state.duration) state.duration = video.duration;
-  if (state.media) state.media.duration = state.duration;
-  renderTimeline();
-  renderMediaInfo();
-});
-video.addEventListener('timeupdate', () => $('#time').textContent = tc(video.currentTime));
-
-$$('[data-mode]').forEach(b => b.onclick = () => { setMode(b.dataset.mode); say(`Mode changed to ${state.mode}.`); });
-$('#markScene').onclick = () => { if (!video.src) return; pushUndo(); state.marks.push(video.currentTime); say(`Scene marker added at ${tc(video.currentTime)}.`); renderTimeline(); };
-$('#split').onclick = () => { if (!video.src) return; pushUndo(); state.splitPoints.push(video.currentTime); learn('accepted','manual split',`split at ${video.currentTime.toFixed(3)}s`); say(`Split marker recorded at ${tc(video.currentTime)}.`); renderTimeline(); };
-$('#setIn').onclick = () => { if(!video.src) return; state.inPoint=video.currentTime; $('#rangeReadout').textContent=`In ${tc(state.inPoint)} / Out ${state.outPoint===null?'—':tc(state.outPoint)}`; };
-$('#setOut').onclick = () => { if(!video.src) return; state.outPoint=video.currentTime; $('#rangeReadout').textContent=`In ${state.inPoint===null?'—':tc(state.inPoint)} / Out ${tc(state.outPoint)}`; };
-$('#deleteRange').onclick = () => {
-  if (state.inPoint === null || state.outPoint === null) return say('Set both In and Out points first.');
-  const start=Math.min(state.inPoint,state.outPoint), end=Math.max(state.inPoint,state.outPoint);
-  if (end-start < .04) return say('That range is too short to remove.');
-  pushUndo();
-  state.removeRanges.push({start,end});
-  state.removeRanges.sort((a,b)=>a.start-b.start);
-  learn('accepted','manual range delete',`${tc(start)} → ${tc(end)}`);
-  say(`Removed ${tc(start)} → ${tc(end)} from the export plan. Undo is available.`);
-  state.inPoint=state.outPoint=null;
-  $('#rangeReadout').textContent='In — / Out —';
-  renderTimeline();
-};
-$('#undoEdit').onclick = () => { const s=state.undo.pop(); if(!s) return say('Nothing to undo.'); restore(s); say('Undid the last manual timeline change.'); };
-
-$('#send').onclick = async () => {
-  const p=$('#prompt'); const q=p.value.trim(); if(!q) return;
-  say(q,'user'); p.value='';
-  let response = null;
-  if (desktop) {
-    const r = await window.directorcut.askDirector({
-      request:q,
-      mode:state.mode,
-      project:{name:state.name, duration:state.duration, scenes:state.scenes.slice(0,30), removeRanges:state.removeRanges, learned:state.edits.slice(-20)},
-      transcript_excerpt:(state.transcript?.text || state.script || '').slice(0,12000)
-    });
-    if (r.available) { response=r.text; $('#aiStatus').textContent='Director model: local model connected'; }
-    else $('#aiStatus').textContent='Director model: offline fallback (start llama-server on port 8080)';
-  }
-  response ||= heuristicDirector(q);
-  if (state.mode === 'Ask') say(response);
-  else if (state.mode === 'Auto') { say('Auto: '+response); learn('auto-accepted',q,response); }
-  else proposal(response,q);
-};
-$('#prompt').addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){e.preventDefault();$('#send').click();} });
-$('#approve').onclick = () => { const t=$('#proposalText').textContent; const c=$('#proposal').dataset.context || 'proposal'; learn('accepted',c,t); say('Approved. Director added this decision to local learning history.'); $('#proposal').hidden=true; };
-$('#reject').onclick = () => { const t=$('#proposalText').textContent; const c=$('#proposal').dataset.context || 'proposal'; learn('rejected',c,t); say('Rejected. Director recorded the rejection so it can avoid repeating the same choice.'); $('#proposal').hidden=true; };
-
-$('#searchBtn').onclick = () => {
-  const q=$('#search').value.trim(); if(!q) return;
-  const timed=transcriptFind(q);
-  if(timed){ video.currentTime=timed.start; say(`Found “${q}” at ${tc(timed.start)}. Jumped the playhead there.`); return; }
-  const text=$('#transcript').innerText.toLowerCase();
-  const found=text.includes(q.toLowerCase());
-  say(found ? `Found “${q}” in the script, but this text has no word timestamps yet.` : `I couldn't find “${q}”.`);
-};
-
-$('#transcribe').onclick = async () => {
-  if(!state.media?.path) return say('Load a desktop video first.');
-  const model=$('#whisperModel').value;
-  say(`Starting local Whisper ${model} transcription. This runs on your computer.`);
-  $('#transcribe').disabled=true;
-  try {
-    state.transcript=await window.directorcut.transcribe(state.media.path,model);
-    renderComposer();
-    say(`Transcription complete: ${state.transcript.words.length} timestamped words. Phrase search can now jump to exact speech.`);
-  } catch(e) {
-    say(`Transcription failed: ${e.message}. Install faster-whisper with: python -m pip install faster-whisper`);
-  } finally { $('#transcribe').disabled=false; }
-};
-
-$('#saveProject').onclick = async () => { try { const r=await window.directorcut.saveProject(projectObject()); if(r) say(`Project saved: ${r.path}`); } catch(e){say(`Save failed: ${e.message}`);} };
-$('#openProject').onclick = async () => { try { const p=await window.directorcut.openProject(); if(p){loadProjectObject(p);say('Project opened.');} } catch(e){say(`Open failed: ${e.message}`);} };
-$('#exportVideo').onclick = async () => {
-  if(!state.media?.path) return say('Load a desktop video first.');
-  say('Rendering the edit locally with FFmpeg…');
-  $('#exportVideo').disabled=true;
-  try { const r=await window.directorcut.exportVideo(projectObject()); if(r) say(`Export complete: ${r.outputPath}`); }
-  catch(e){ say(`Export failed: ${e.message}`); }
-  finally { $('#exportVideo').disabled=false; }
-};
-$('#exportSrt').onclick = async () => { try { const r=await window.directorcut.exportSrt(projectObject()); if(r) say(`Caption file exported: ${r.path}`); } catch(e){say(`Caption export failed: ${e.message}`);} };
-
-renderComposer();
-renderTimeline();
-renderMediaInfo();
-status();
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],desktop=Boolean(window.directorcut?.desktop),TL=window.DirectorTimeline,video=$('#video');
+const state={version:3,name:'Untitled Project',workspaceMode:'Manual',directorPolicy:'Co-edit',activeTool:'select',selectedModel:localStorage.getItem('directorcut.ollamaModel')||'',selectedClipId:null,script:'',scenes:[],media:null,duration:0,transcript:null,artifacts:{thumbnails:[],waveform:null,proxy:null},attachments:[],conversation:[],edits:JSON.parse(localStorage.getItem('directorcut.learning')||'[]'),marks:[],splitPoints:[],removeRanges:[],inPoint:null,outPoint:null,timeline:TL.normalizeTimeline({fps:30,tracks:[{id:'V2',name:'V2 Graphics',kind:'graphic',clips:[]},{id:'V1',name:'V1 Video',kind:'video',clips:[]},{id:'A1',name:'A1 Dialogue',kind:'audio',clips:[]},{id:'C1',name:'C1 Captions',kind:'caption',clips:[]}]}),undo:[],dirty:false,autosavedAt:null,drag:null,pendingProposal:null,ai:null};
+const clone=v=>JSON.parse(JSON.stringify(v));function tc(t){if(!Number.isFinite(t))t=0;const ms=Math.floor(t%1*1000),s=Math.floor(t)%60,m=Math.floor(t/60)%60,h=Math.floor(t/3600);return[h,m,s].map(x=>String(x).padStart(2,'0')).join(':')+'.'+String(ms).padStart(3,'0')}function fps(){return TL.parseFps(state.media?.frameRate||state.timeline.fps||30)}function frameSnap(t){return TL.snapTime(t,fps())}
+function say(text,type='ai',record=true){const d=document.createElement('div');d.className='message '+type;d.textContent=text;$('#activity').appendChild(d);$('#activity').scrollTop=999999;if(record&&(type==='user'||type==='ai')){state.conversation.push({role:type==='user'?'user':'assistant',content:String(text)});if(state.conversation.length>30)state.conversation.splice(0,state.conversation.length-30)}}function systemMessage(text){say(text,'system',false)}function persistLearning(){localStorage.setItem('directorcut.learning',JSON.stringify(state.edits))}function markDirty(){state.dirty=true;$('#autosaveState').textContent='Unsaved changes';status()}function status(){const clipCount=state.timeline.tracks.reduce((n,t)=>n+t.clips.length,0),save=state.dirty?'autosave pending':state.autosavedAt?`saved ${new Date(state.autosavedAt).toLocaleTimeString()}`:'autosave ready';$('#status').textContent=`${state.timeline.tracks.length} tracks · ${clipCount} clips · ${state.edits.length} learned · ${save}`}
+function snapshot(){return clone({removeRanges:state.removeRanges,splitPoints:state.splitPoints,marks:state.marks,timeline:state.timeline})}function pushUndo(custom){state.undo.push(custom||snapshot());if(state.undo.length>120)state.undo.shift()}function restore(s){state.removeRanges=s.removeRanges||[];state.splitPoints=s.splitPoints||[];state.marks=s.marks||[];if(s.timeline)state.timeline=TL.normalizeTimeline(s.timeline);renderTimeline();markDirty()}
+function scenePlan(script){return script.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean).map((text,i)=>{const words=text.split(/\s+/).length;return{n:i+1,text,purpose:i===0?'Hook':/\d/.test(text)?'Evidence':'Narrative',visual:i===0?'Presenter / strongest visual':/\d/.test(text)?'Evidence + motion callout':'Presenter / semantic B-roll',performance:i===0?'Controlled start, strong final phrase':'Natural delivery',dur:Math.max(2.5,words/150*60)}})}
+function projectObject(){state.name=$('#projectName').value.trim()||'Untitled Project';return{version:3,name:state.name,workspaceMode:state.workspaceMode,directorPolicy:state.directorPolicy,selectedModel:state.selectedModel,script:state.script,scenes:state.scenes,media:state.media,transcript:state.transcript,timeline:state.timeline,marks:state.marks,splitPoints:state.splitPoints,removeRanges:state.removeRanges,learning:state.edits}}
+function loadProjectObject(p){state.name=p.name||'Untitled Project';state.workspaceMode=p.workspaceMode||'Manual';state.directorPolicy=p.directorPolicy||p.mode||'Co-edit';state.selectedModel=p.selectedModel||state.selectedModel;state.script=p.script||'';state.scenes=p.scenes||[];state.media=p.media||null;state.duration=Number(p.media?.duration||0);state.transcript=p.transcript||null;state.marks=p.marks||[];state.splitPoints=p.splitPoints||[];state.removeRanges=p.removeRanges||[];state.timeline=TL.normalizeTimeline(p.timeline||state.timeline);if(Array.isArray(p.learning))state.edits=p.learning;$('#projectName').value=state.name;if(state.media?.path&&desktop)setVideoSource(state.media.url||('file://'+state.media.path.replace(/\\/g,'/')));renderTranscript();renderMediaInfo();renderTimeline();renderAttachments();setWorkspace(state.workspaceMode,false);setPolicy(state.directorPolicy,false);state.dirty=false;status();if(state.media?.path)prepareArtifacts(false)}
+function renderMediaInfo(){if(!state.media){$('#mediaInfo').textContent='No media loaded.';return}const dims=state.media.width?`${state.media.width}×${state.media.height}`:'dimensions unknown';$('#mediaInfo').textContent=`${state.media.name} · ${tc(state.media.duration)} · ${dims} · ${state.media.videoCodec||'video'}`;$('#fpsBadge').textContent=`${fps().toFixed(fps()%1?2:0)} FPS`}function renderTranscript(){if(state.transcript?.words?.length){$('#transcriptMode').textContent=`TRANSCRIPT · ${state.transcript.words.length} WORDS`;$('#transcript').textContent=state.transcript.text||state.transcript.words.map(w=>w.text).join(' ')}else{$('#transcriptMode').textContent='SCRIPT';$('#transcript').textContent=state.script||'Load a script or run local transcription. Word-timestamp transcripts let DirectorCut jump directly to spoken phrases.'}}
+function addRemovedOverlay(lane,total){state.removeRanges.forEach(r=>{const d=document.createElement('div');d.className='removedRange';d.style.left=`${r.start/total*100}%`;d.style.width=`${Math.max(.2,(r.end-r.start)/total*100)}%`;d.title=`Removed ${tc(r.start)} → ${tc(r.end)}`;lane.appendChild(d)})}function keyframeDots(clip,el){Object.values(clip.keyframes||{}).flat().forEach(k=>{const d=document.createElement('span');d.className='keyframeDot';d.style.left=`${Math.max(0,Math.min(100,k.time/clip.duration*100))}%`;el.appendChild(d)})}
+function renderClip(track,clip,lane,total){const d=document.createElement('div');d.className=`clip ${track.kind==='audio'?'audio':track.kind==='caption'?'caption':track.kind==='graphic'?'graphic':''}${state.selectedClipId===clip.id?' selected':''}`;d.dataset.clipId=clip.id;d.style.left=`${clip.start/total*100}%`;d.style.width=`${Math.max(.35,clip.duration/total*100)}%`;const name=document.createElement('span');name.className='clipName';name.textContent=clip.name;const hint=document.createElement('span');hint.className='dragHint';hint.textContent=state.activeTool;d.append(name,hint);if(track.kind==='video'&&state.artifacts.thumbnails?.length){const strip=document.createElement('div');strip.className='thumbStrip';state.artifacts.thumbnails.slice(0,18).forEach(src=>{const img=document.createElement('img');img.src=src;strip.appendChild(img)});d.prepend(strip)}if(track.kind==='audio'&&state.artifacts.waveform){const img=document.createElement('img');img.src=state.artifacts.waveform;img.className='waveformImg';d.prepend(img)}keyframeDots(clip,d);d.addEventListener('pointerdown',ev=>startClipDrag(ev,clip.id,lane,total));d.addEventListener('click',ev=>{ev.stopPropagation();selectClip(clip.id)});lane.appendChild(d)}
+function renderTimeline(){const root=$('#tracks');root.innerHTML='';const total=Math.max(state.duration,TL.duration(state.timeline),state.scenes.reduce((a,s)=>a+s.dur,0),1);for(const track of state.timeline.tracks){const row=document.createElement('div');row.className='track';const label=document.createElement('div');label.className='trackLabel';label.innerHTML=`<span>${track.name}</span><small>${track.clips.length}</small>`;const lane=document.createElement('div');lane.className='lane';lane.dataset.trackId=track.id;lane.onclick=()=>selectClip(null);track.clips.forEach(c=>renderClip(track,c,lane,total));if(track.kind==='video'||track.kind==='audio')addRemovedOverlay(lane,total);state.splitPoints.forEach(p=>{const line=document.createElement('div');line.className='splitMarker';line.style.left=`${p/total*100}%`;lane.appendChild(line)});const ph=document.createElement('div');ph.className='playhead';ph.style.left=`${Math.min(100,(video.currentTime||0)/total*100)}%`;lane.appendChild(ph);row.append(label,lane);root.appendChild(row)}renderSelectedClip();status()}
+function selectClip(id){state.selectedClipId=id;renderTimeline()}function renderSelectedClip(){const found=state.selectedClipId?TL.findClip(state.timeline,state.selectedClipId):null;$('#selectedClip').textContent=found?.clip?.name||'None';$('#selectedClipMeta').textContent=found?`${found.track.id} · ${tc(found.clip.start)} · ${tc(found.clip.duration)} · source ${tc(found.clip.sourceIn)}`:'Select a timeline clip to inspect it.'}
+function rippleMove(base,clipId,delta){let timeline=TL.normalizeTimeline(base);const found=TL.findClip(timeline,clipId);if(!found)return timeline;const originalStart=found.clip.start,target=Math.max(0,originalStart+delta),snapped=TL.snapTime(target,timeline.fps),d=snapped-originalStart;timeline=TL.moveClip(timeline,clipId,snapped,{snap:false});const moved=TL.findClip(timeline,clipId);if(!moved)return timeline;for(const c of moved.track.clips)if(c.id!==clipId&&c.start>originalStart)c.start=TL.snapTime(Math.max(0,c.start+d),timeline.fps);moved.track.clips.sort((a,b)=>a.start-b.start);return timeline}
+function startClipDrag(ev,clipId,lane,total){if(ev.button!==0)return;ev.preventDefault();selectClip(clipId);const base=clone(state.timeline),found=TL.findClip(base,clipId);if(!found)return;state.drag={clipId,startX:ev.clientX,width:Math.max(1,lane.getBoundingClientRect().width),total,base,original:clone(found.clip),before:snapshot()}}
+window.addEventListener('pointermove',ev=>{const drag=state.drag;if(!drag)return;const delta=(ev.clientX-drag.startX)/drag.width*drag.total;if(state.activeTool==='select')state.timeline=TL.moveClip(drag.base,drag.clipId,drag.original.start+delta);else if(state.activeTool==='ripple')state.timeline=rippleMove(drag.base,drag.clipId,delta);else if(state.activeTool==='slip')state.timeline=TL.slipClip(drag.base,drag.clipId,delta);else if(state.activeTool==='slide')state.timeline=TL.slideClip(drag.base,drag.clipId,delta);else if(state.activeTool==='roll'){const f=TL.findClip(drag.base,drag.clipId),next=f?.track?.clips?.[f.index+1];state.timeline=next?TL.rollBoundary(drag.base,drag.clipId,next.id,delta):TL.moveClip(drag.base,drag.clipId,drag.original.start+delta)}renderTimeline()});window.addEventListener('pointerup',()=>{if(!state.drag)return;pushUndo(state.drag.before);learn('accepted',`manual ${state.activeTool}`,state.drag.clipId);state.drag=null;markDirty();renderTimeline()});
+function setVideoSource(url){video.src=url;$('#emptyMonitor').style.display='none'}function createMediaTimeline(media){const duration=Math.max(.1,Number(media.duration)||1),rate=TL.parseFps(media.frameRate||30);state.timeline=TL.normalizeTimeline({fps:rate,tracks:[{id:'V2',name:'V2 Graphics',kind:'graphic',clips:[]},{id:'V1',name:'V1 Video',kind:'video',clips:[TL.createClip({id:'video-main',trackId:'V1',kind:'video',name:media.name,sourcePath:media.path,start:0,duration,sourceDuration:duration,linkedId:'audio-main'})]},{id:'A1',name:'A1 Dialogue',kind:'audio',clips:media.hasAudio===false?[]:[TL.createClip({id:'audio-main',trackId:'A1',kind:'audio',name:`${media.name} · audio`,sourcePath:media.path,start:0,duration,sourceDuration:duration,linkedId:'video-main'})]},{id:'C1',name:'C1 Captions',kind:'caption',clips:[]}]})}
+async function acceptBrowserVideo(file){if(!file)return;setVideoSource(URL.createObjectURL(file));state.media={name:file.name,path:null,url:null,duration:0,frameRate:'30/1'};say(`Imported ${file.name}. Browser preview is available; desktop mode is required for local media processing.`)}async function acceptDesktopMedia(media){if(!media)return;state.media=media;state.duration=Number(media.duration||0);state.artifacts={thumbnails:[],waveform:null,proxy:null};createMediaTimeline(media);setVideoSource(media.url);renderMediaInfo();renderTimeline();markDirty();say(`Imported ${media.name}. Editing is immediately available while thumbnails and waveform build in the background.`);prepareArtifacts(false)}
+async function prepareArtifacts(proxy=false){if(!desktop||!state.media?.path)return;$('#cacheStatus').textContent=proxy?'Building editing proxy in background…':'Building thumbnails and waveform…';try{const a=await window.directorcut.prepareMedia(state.media,proxy);state.artifacts={...state.artifacts,...a};$('#cacheStatus').textContent=`${a.thumbnails?.length||0} thumbnails${a.waveform?' · waveform':''}${a.proxy?' · proxy ready':''}`;renderTimeline();if(a.proxy)$('#proxyToggle').disabled=false}catch(e){$('#cacheStatus').textContent=`Media cache unavailable: ${e.message}`}}
+async function acceptScript(text,name='script'){state.script=text;state.scenes=scenePlan(text);renderTranscript();markDirty();say(`${name} analyzed: ${state.scenes.length} scenes. The scene plan is available to Director without changing your manual timeline.`)}
+function setWorkspace(mode,announce=true){state.workspaceMode=mode==='Director'?'Director':'Manual';$$('[data-workspace]').forEach(x=>x.classList.toggle('active',x.dataset.workspace===state.workspaceMode));$('#directorPolicy').classList.toggle('disabled',state.workspaceMode!=='Director');$('#modeLabel').textContent=state.workspaceMode==='Manual'?'MANUAL · CONVERSATION SAFE':`DIRECTOR · ${state.directorPolicy.toUpperCase()}`;$('#composerMode').textContent=state.workspaceMode==='Manual'?'Manual · chat & advice':`Director · ${state.directorPolicy}`;if(announce){systemMessage(state.workspaceMode==='Manual'?'Manual mode: I can talk, analyze and advise, but I will not modify the timeline.':`Director mode: ${state.directorPolicy} safety is active.`);markDirty()}}
+function setPolicy(policy,announce=true){state.directorPolicy=['Ask','Co-edit','Auto'].includes(policy)?policy:'Co-edit';$$('[data-policy]').forEach(x=>x.classList.toggle('active',x.dataset.policy===state.directorPolicy));setWorkspace(state.workspaceMode,false);if(announce&&state.workspaceMode==='Director'){systemMessage(`Director safety changed to ${state.directorPolicy}.`);markDirty()}}function setTool(tool){state.activeTool=tool;$$('[data-tool]').forEach(x=>x.classList.toggle('active',x.dataset.tool===tool));renderTimeline()}
+function learn(action,context,replacement){state.edits.push({kind:'director-correction',action,context,replacement,at:new Date().toISOString()});if(state.edits.length>5000)state.edits.splice(0,state.edits.length-5000);persistLearning();status()}function showProposal(text,ops,context){state.pendingProposal={text,ops,context};$('#proposalText').textContent=text;$('#proposalOps').textContent=ops.map(o=>o.type).join(' · ')||'No timeline operation';$('#proposal').hidden=false}
+function heuristicDirector(q){const low=q.toLowerCase(),operations=[];let intent='conversation',text='I can help with that.';const editing=/\b(cut|split|remove|delete|trim|move|edit|keyframe|marker|caption|subtitle|tighten|shorten)\b/.test(low);if(editing){intent='edit_task';text='I understand this as an editing task.'}if(/split (here|this)/.test(low)){operations.push({type:'split_at',time:frameSnap(video.currentTime)});text='Split at the current playhead.'}else if(/(remove|delete).*(selection|this|range)/.test(low)&&state.inPoint!==null&&state.outPoint!==null){operations.push({type:'remove_range',start:Math.min(state.inPoint,state.outPoint),end:Math.max(state.inPoint,state.outPoint)});text='Remove the selected In/Out range and ripple the timeline.'}else if(low.includes('where')&&state.transcript?.words?.length){intent='search';text='Tell me the exact phrase and I can jump to its word timestamp.'}else if(low.includes('how are you')){intent='conversation';text='I’m ready. You can keep talking to me normally while you edit.'}if(state.workspaceMode!=='Director'||state.directorPolicy==='Ask')operations.length=0;return{intent,text,operations}}
+function applyOperations(ops,source='Director'){const operations=Array.isArray(ops)?ops:[],mutating=operations.some(o=>o.type!=='seek');if(mutating)pushUndo();let applied=0;for(const op of operations){if(op.type==='seek'){video.currentTime=frameSnap(op.time);applied++}else if(op.type==='split_at'){state.splitPoints.push(frameSnap(op.time));applied++}else if(op.type==='add_marker'){state.marks.push(frameSnap(op.time));applied++}else if(op.type==='remove_range'){const start=frameSnap(Math.min(op.start,op.end)),end=frameSnap(Math.max(op.start,op.end));if(end>start){state.removeRanges.push({start,end});state.removeRanges.sort((a,b)=>a.start-b.start);state.timeline=TL.rippleDelete(state.timeline,start,end);applied++}}else if(op.type==='move_clip'){state.timeline=TL.moveClip(state.timeline,op.clipId,op.newStart);applied++}else if(op.type==='add_keyframe'){state.timeline=TL.addKeyframe(state.timeline,op.clipId,op.property,op.time,op.value);applied++}}if(mutating&&applied){learn('accepted',source,operations);markDirty();renderTimeline()}return applied}
+function transcriptFind(phrase){const words=state.transcript?.words;if(!words?.length)return null;const tokens=phrase.toLowerCase().trim().split(/\s+/).filter(Boolean),norm=s=>(s||'').toLowerCase().replace(/[^\p{L}\p{N}'’-]+/gu,'');for(let i=0;i<=words.length-tokens.length;i++){let ok=true;for(let j=0;j<tokens.length;j++)if(norm(words[i+j].text)!==norm(tokens[j])){ok=false;break}if(ok)return{start:words[i].start_ms/1000,end:words[i+tokens.length-1].end_ms/1000}}return null}function attachmentPayload(){return state.attachments.map(a=>({name:a.name,kind:a.kind,path:a.path,size:a.size,text:a.text?String(a.text).slice(0,12000):null}))}function renderAttachments(){const root=$('#attachmentChips');root.innerHTML='';state.attachments.forEach((a,i)=>{const chip=document.createElement('div');chip.className='attachmentChip';chip.innerHTML=`<span>${a.kind==='image'?'▧':a.kind==='video'?'▶':a.kind==='audio'?'♪':'▤'} ${a.name}</span>`;const x=document.createElement('button');x.textContent='×';x.onclick=()=>{state.attachments.splice(i,1);renderAttachments()};chip.appendChild(x);root.appendChild(chip)})}
+async function refreshLocalAI(){if(!desktop){$('#aiStatus').textContent='Browser mode: local providers unavailable.';return}$('#aiStatus').textContent='Checking Ollama…';try{state.ai=await window.directorcut.localAIStatus();const o=state.ai.ollama,g=state.ai.gstreamer,models=(o.models||[]).slice().sort((a,b)=>(a.size||0)-(b.size||0)),selects=[$('#ollamaModel'),$('#topModel')];selects.forEach(s=>{s.innerHTML='';if(!models.length){const op=document.createElement('option');op.textContent=o.installed?(o.running?'No Ollama models found':'Start Ollama to list models'):'Ollama not detected';op.value='';s.appendChild(op)}else models.forEach(m=>{const op=document.createElement('option');op.value=m.name;op.textContent=`${m.name}${m.parameterSize?' · '+m.parameterSize:''}`;s.appendChild(op)})});if(models.length){if(!models.some(m=>m.name===state.selectedModel))state.selectedModel=models[0].name;selects.forEach(s=>s.value=state.selectedModel);localStorage.setItem('directorcut.ollamaModel',state.selectedModel);const m=models.find(x=>x.name===state.selectedModel);$('#modelMeta').textContent=`${m?.parameterSize||'local'} · ${m?.quantization||'quantization unknown'} · kept warm for fast chat`}$('#aiStatus').textContent=o.running?`Ollama connected · ${models.length} model${models.length===1?'':'s'}`:o.installed?'Ollama installed but not running':'Ollama not detected';$('#aiDot').classList.toggle('online',Boolean(o.running&&models.length));$('#gstStatus').textContent=g.available?`GStreamer ${g.version||''}${g.ges?' + GES':''}${g.hardware?.length?' · '+g.hardware.join(', '):''}`:'GStreamer not detected · Chromium preview active'}catch(e){$('#aiStatus').textContent=`Local AI check failed: ${e.message}`}}
+async function chooseModel(model){if(!model)return;state.selectedModel=model;localStorage.setItem('directorcut.ollamaModel',model);$('#ollamaModel').value=model;$('#topModel').value=model;$('#modelMeta').textContent='Warming model for fast conversation…';try{const r=await window.directorcut.warmModel(model);$('#modelMeta').textContent=r.ok?'Model warm · ready for fast chat':'Selected · loads on first message'}catch(_){$('#modelMeta').textContent='Selected · loads on first message'}markDirty()}
+$('#videoInput').style.display=desktop?'none':'block';$('#scriptInput').style.display=desktop?'none':'block';$('#pickVideo').style.display=desktop?'block':'none';$('#pickScript').style.display=desktop?'block':'none';['openProject','saveProject','exportVideo','exportSrt','transcribe','makeProxy','refreshAI','ollamaModel','topModel','attach'].forEach(id=>{if($('#'+id))$('#'+id).disabled=!desktop});$('#proxyToggle').disabled=true;
+$('#videoInput').addEventListener('change',e=>acceptBrowserVideo(e.target.files[0]));$('#scriptInput').addEventListener('change',async e=>{const f=e.target.files[0];if(f)acceptScript(await f.text(),f.name)});$('#pickVideo').onclick=async()=>{try{await acceptDesktopMedia(await window.directorcut.pickMedia())}catch(e){say(`Import failed: ${e.message}`)}};$('#pickScript').onclick=async()=>{try{const s=await window.directorcut.pickScript();if(s)acceptScript(s.text,s.name)}catch(e){say(`Script import failed: ${e.message}`)}};
+video.addEventListener('loadedmetadata',()=>{if(!state.duration)state.duration=video.duration;if(state.media)state.media.duration=state.duration;renderTimeline();renderMediaInfo()});video.addEventListener('timeupdate',()=>{$('#time').textContent=tc(video.currentTime);renderPlayheadsOnly()});function renderPlayheadsOnly(){const total=Math.max(state.duration,TL.duration(state.timeline),1);$$('.playhead').forEach(p=>p.style.left=`${Math.min(100,(video.currentTime||0)/total*100)}%`)}
+$$('[data-workspace]').forEach(b=>b.onclick=()=>setWorkspace(b.dataset.workspace));$$('[data-policy]').forEach(b=>b.onclick=()=>setPolicy(b.dataset.policy));$$('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));$('#markScene').onclick=()=>{if(!video.src)return;pushUndo();state.marks.push(frameSnap(video.currentTime));learn('accepted','manual marker',frameSnap(video.currentTime));markDirty();renderTimeline()};$('#split').onclick=()=>{if(!video.src)return;pushUndo();const t=frameSnap(video.currentTime);state.splitPoints.push(t);learn('accepted','manual split',`split at ${t.toFixed(6)}s`);markDirty();say(`Split marker recorded at ${tc(t)}.`);renderTimeline()};$('#setIn').onclick=()=>{if(!video.src)return;state.inPoint=frameSnap(video.currentTime);$('#rangeReadout').textContent=`In ${tc(state.inPoint)} / Out ${state.outPoint===null?'—':tc(state.outPoint)}`};$('#setOut').onclick=()=>{if(!video.src)return;state.outPoint=frameSnap(video.currentTime);$('#rangeReadout').textContent=`In ${state.inPoint===null?'—':tc(state.inPoint)} / Out ${tc(state.outPoint)}`};$('#deleteRange').onclick=()=>{if(state.inPoint===null||state.outPoint===null)return say('Set both In and Out points first.');const start=frameSnap(Math.min(state.inPoint,state.outPoint)),end=frameSnap(Math.max(state.inPoint,state.outPoint));if(end-start<1/fps())return say('That range is shorter than one frame.');pushUndo();state.removeRanges.push({start,end});state.removeRanges.sort((a,b)=>a.start-b.start);state.timeline=TL.rippleDelete(state.timeline,start,end);learn('accepted','manual ripple delete',`${tc(start)} → ${tc(end)}`);state.inPoint=state.outPoint=null;$('#rangeReadout').textContent='In — / Out —';markDirty();say(`Frame-snapped ripple delete ${tc(start)} → ${tc(end)}. Undo is available.`);renderTimeline()};$('#undoEdit').onclick=()=>{const s=state.undo.pop();if(!s)return say('Nothing to undo.');restore(s);say('Undid the last timeline change.')};$('#addKeyframe').onclick=()=>{if(!state.selectedClipId)return say('Select a clip first.');pushUndo();const property=$('#keyframeProperty').value,value=Number($('#keyframeValue').value);state.timeline=TL.addKeyframe(state.timeline,state.selectedClipId,property,video.currentTime,value);learn('accepted','manual keyframe',{clip:state.selectedClipId,property,value,time:video.currentTime});markDirty();renderTimeline()};$('#addVideoTrack').onclick=()=>{pushUndo();const n=state.timeline.tracks.filter(t=>t.kind==='video').length+1;state.timeline.tracks.unshift({id:`V${n}`,name:`V${n} Video`,kind:'video',locked:false,muted:false,hidden:false,clips:[]});markDirty();renderTimeline()};$('#addAudioTrack').onclick=()=>{pushUndo();const n=state.timeline.tracks.filter(t=>t.kind==='audio').length+1;state.timeline.tracks.push({id:`A${n}`,name:`A${n} Audio`,kind:'audio',locked:false,muted:false,hidden:false,clips:[]});markDirty();renderTimeline()};
+$('#attach').onclick=async()=>{try{const items=await window.directorcut.pickAttachments();state.attachments.push(...items);state.attachments=state.attachments.slice(-12);renderAttachments()}catch(e){say(`Attach failed: ${e.message}`)}};$('#send').onclick=async()=>{const p=$('#prompt'),q=p.value.trim();if(!q)return;say(q,'user');p.value='';let result=null;if(desktop){try{result=await window.directorcut.askDirector({request:q,workspaceMode:state.workspaceMode,directorPolicy:state.directorPolicy,model:state.selectedModel,history:state.conversation.slice(-12,-1),intentHint:/\b(cut|split|remove|trim|move|edit|keyframe|marker|caption|tighten|shorten)\b/i.test(q)?'possible_edit':'conversation_possible',currentTime:frameSnap(video.currentTime||0),selection:{clipId:state.selectedClipId,inPoint:state.inPoint,outPoint:state.outPoint},attachments:attachmentPayload(),project:{name:state.name,duration:state.duration,scenes:state.scenes.slice(0,24),removeRanges:state.removeRanges,learned:state.edits.slice(-20),timeline:state.timeline.tracks.map(t=>({id:t.id,kind:t.kind,clips:t.clips.map(c=>({id:c.id,name:c.name,start:c.start,duration:c.duration,sourceIn:c.sourceIn}))}))},transcript_excerpt:(state.transcript?.text||state.script||'').slice(0,12000)})}catch(e){result={available:false,error:e.message}}}if(!result?.available)result={available:false,...heuristicDirector(q)};const text=result.text||'I could not produce a response.';say(text);const ops=Array.isArray(result.operations)?result.operations:[];if(state.workspaceMode==='Director'&&result.intent==='edit_task'&&ops.length){if(state.directorPolicy==='Auto'){const n=applyOperations(ops,`Director Auto: ${q}`);systemMessage(`Auto applied ${n} validated timeline operation${n===1?'':'s'}.`)}else if(state.directorPolicy==='Co-edit')showProposal(text,ops,q)}};$('#prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#send').click()}});$('#approve').onclick=()=>{const p=state.pendingProposal;if(!p)return;const n=applyOperations(p.ops,`Approved: ${p.context}`);learn('accepted',p.context,p.ops);systemMessage(`Applied ${n} proposed operation${n===1?'':'s'}.`);state.pendingProposal=null;$('#proposal').hidden=true};$('#reject').onclick=()=>{const p=state.pendingProposal;if(p)learn('rejected',p.context,p.ops);systemMessage('Rejected. That correction was added to learning history.');state.pendingProposal=null;$('#proposal').hidden=true};
+$('#searchBtn').onclick=()=>{const q=$('#search').value.trim();if(!q)return;const timed=transcriptFind(q);if(timed){video.currentTime=timed.start;say(`Found “${q}” at ${tc(timed.start)}. Jumped there.`);return}const found=$('#transcript').innerText.toLowerCase().includes(q.toLowerCase());say(found?`Found “${q}” in the script, but it has no word timestamps yet.`:`I couldn't find “${q}”.`)};$('#transcribe').onclick=async()=>{if(!state.media?.path)return say('Load a desktop video first.');const model=$('#whisperModel').value;say(`Starting local Whisper ${model} transcription.`);$('#transcribe').disabled=true;try{state.transcript=await window.directorcut.transcribe(state.media.path,model);renderTranscript();markDirty();say(`Transcription complete: ${state.transcript.words.length} timestamped words.`)}catch(e){say(`Transcription failed: ${e.message}. Install faster-whisper with the optional AI setup.`)}finally{$('#transcribe').disabled=false}};$('#makeProxy').onclick=()=>prepareArtifacts(true);$('#proxyToggle').onchange=()=>{if($('#proxyToggle').checked&&state.artifacts.proxy){setVideoSource(state.artifacts.proxy);$('#previewBadge').textContent='PROXY'}else if(state.media?.url){setVideoSource(state.media.url);$('#previewBadge').textContent='ORIGINAL'}};$('#refreshAI').onclick=refreshLocalAI;$('#ollamaModel').onchange=e=>chooseModel(e.target.value);$('#topModel').onchange=e=>chooseModel(e.target.value);
+$('#saveProject').onclick=async()=>{try{const r=await window.directorcut.saveProject(projectObject());if(r){state.dirty=false;state.autosavedAt=new Date().toISOString();status();say(`Project saved: ${r.path}`)}}catch(e){say(`Save failed: ${e.message}`)}};$('#openProject').onclick=async()=>{try{const p=await window.directorcut.openProject();if(p){loadProjectObject(p);say('Project opened.')}}catch(e){say(`Open failed: ${e.message}`)}};$('#exportVideo').onclick=async()=>{if(!state.media?.path)return say('Load a desktop video first.');say('Rendering frame-snapped cuts locally with FFmpeg…');$('#exportVideo').disabled=true;try{const r=await window.directorcut.exportVideo(projectObject());if(r)say(`Export complete: ${r.outputPath}`)}catch(e){say(`Export failed: ${e.message}`)}finally{$('#exportVideo').disabled=false}};$('#exportSrt').onclick=async()=>{try{const r=await window.directorcut.exportSrt(projectObject());if(r)say(`Caption file exported: ${r.path}`)}catch(e){say(`Caption export failed: ${e.message}`)}};$('#projectName').addEventListener('input',markDirty);setInterval(async()=>{if(!desktop||!state.dirty)return;try{await window.directorcut.autosaveProject(projectObject());state.dirty=false;state.autosavedAt=new Date().toISOString();$('#autosaveState').textContent='Autosaved';status()}catch(e){$('#autosaveState').textContent='Autosave failed'}},12000);
+async function initialize(){renderTranscript();renderTimeline();renderMediaInfo();renderAttachments();setWorkspace('Manual',false);setPolicy('Co-edit',false);setTool('select');status();if(desktop){refreshLocalAI();try{const auto=await window.directorcut.readAutosave();if(auto?.autosavedAt&&confirm(`Recover autosaved DirectorCut project from ${new Date(auto.autosavedAt).toLocaleString()}?`)){loadProjectObject(auto);systemMessage('Recovered autosave.')}}catch(_){}}}initialize();
