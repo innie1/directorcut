@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(DirectorCut VERSION 0.3.0 LANGUAGES CXX)
+project(DirectorCut VERSION 0.3.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,6 +58,11 @@ if (DIRECTORCUT_BUILD_TESTS)
   add_executable(directorcut_tests tests/test_core.cpp)
   target_link_libraries(directorcut_tests PRIVATE directorcut_core)
   add_test(NAME directorcut_core_tests COMMAND directorcut_tests)
+  if (TARGET directorcut_gstreamer)
+    add_executable(directorcut_gstreamer_tests tests/test_gstreamer.cpp)
+    target_link_libraries(directorcut_gstreamer_tests PRIVATE directorcut_gstreamer)
+    add_test(NAME directorcut_gstreamer_tests COMMAND directorcut_gstreamer_tests)
+  endif()
 endif()
 
 if (DIRECTORCUT_BUILD_QT_UI)
