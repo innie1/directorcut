@@ -1,12 +1,12 @@
 const path = require('path');
-const { app, ipcMain, shell } = require('electron');
+const { app, ipcMain, shell, dialog } = require('electron');
 const { attachNativeProgramMonitor } = require('./native-monitor-ipc');
 const { attachHomeHistory } = require('./home-history');
 
 const ROOT = path.resolve(__dirname, '..');
 let attachedMainWindow = null;
 
-attachHomeHistory({ ipcMain, app, shell });
+attachHomeHistory({ ipcMain, app, shell, dialog });
 
 // Register before main.js creates its BrowserWindow. Only the first top-level
 // DirectorCut window receives the native monitor. The monitor's own child surface
