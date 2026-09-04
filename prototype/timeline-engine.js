@@ -68,6 +68,37 @@
     return timeline;
   }
 
+  function splitKeyframes(keyframes, offset, side, fps) {
+    const out = {};
+    for (const [property, frames] of Object.entries(keyframes || {})) {
+      const list = [];
+      for (const frame of frames || []) {
+        if (side === 'left' && frame.time < offset - EPS) list.push(clone(frame));
+        if (side === 'right' && frame.time >= offset - EPS) list.push({ ...clone(frame), time: snapTime(Math.max(0, frame.time - offset), fps) });
+      }
+      if (list.length) out[property] = list;
+    }
+    return out;
+  }
+
+  function splitAt(timelineInput, time, trackIds = null) {
+    const timeline = normalizeTimeline(timelineInput), t = snapTime(time, timeline.fps), frame = frameDuration(timeline.fps), allow = trackIds ? new Set(trackIds) : null;
+    for (const track of timeline.tracks) {
+      if (track.locked || (allow && !allow.has(track.id))) continue;
+      const result = [];
+      for (const clip of track.clips) {
+        const end = clipEnd(clip);
+        if (t <= clip.start + frame * 0.5 || t >= end - frame * 0.5) { result.push(clip); continue; }
+        const offset = snapTime(t - clip.start, timeline.fps);
+        const left = { ...clone(clip), duration: offset, keyframes: splitKeyframes(clip.keyframes, offset, 'left', timeline.fps) };
+        const right = { ...clone(clip), id: `${clip.id}-r-${Math.round(t * timeline.fps)}-${Math.random().toString(36).slice(2, 6)}`, start: t, duration: snapTime(end - t, timeline.fps), sourceIn: snapTime(clip.sourceIn + offset, timeline.fps), keyframes: splitKeyframes(clip.keyframes, offset, 'right', timeline.fps) };
+        result.push(left, right);
+      }
+      track.clips = result.sort((a, b) => a.start - b.start);
+    }
+    return timeline;
+  }
+
   function rollBoundary(timelineInput, leftId, rightId, deltaSeconds) {
     const timeline = normalizeTimeline(timelineInput), leftFound = findClip(timeline, leftId), rightFound = findClip(timeline, rightId); if (!leftFound || !rightFound || leftFound.track.id !== rightFound.track.id || leftFound.track.locked) return timeline;
     const left = leftFound.clip, right = rightFound.clip, frame = frameDuration(timeline.fps), delta = snapDelta(deltaSeconds, timeline.fps), maxLeftGrow = Math.max(0, left.sourceDuration - (left.sourceIn + left.duration)), maxRightTrim = Math.max(0, right.duration - frame), maxLeftTrim = Math.max(0, left.duration - frame), maxRightGrow = Math.max(0, right.sourceIn), clamped = Math.max(-Math.min(maxLeftTrim, maxRightGrow), Math.min(delta, maxLeftGrow, maxRightTrim)); if (Math.abs(clamped) <= EPS) return timeline;
@@ -89,5 +120,5 @@
   }
 
   function duration(timelineInput) { const timeline = normalizeTimeline(timelineInput); let max = 0; for (const track of timeline.tracks) for (const clip of track.clips) max = Math.max(max, clipEnd(clip)); return max; }
-  return { parseFps, frameDuration, snapTime, snapDelta, clipEnd, createClip, normalizeTimeline, findClip, moveClip, rippleDelete, rollBoundary, slipClip, slideClip, addKeyframe, duration };
+  return { parseFps, frameDuration, snapTime, snapDelta, clipEnd, createClip, normalizeTimeline, findClip, moveClip, rippleDelete, splitAt, rollBoundary, slipClip, slideClip, addKeyframe, duration };
 });
