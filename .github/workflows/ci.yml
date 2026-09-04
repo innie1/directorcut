@@ -51,7 +51,7 @@ jobs:
       - name: Syntax timeline engine and base UI
         run: node --check prototype/timeline-engine.js && node --check prototype/caption-utils.js && node --check prototype/selection-actions.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
       - name: Syntax advanced timeline and professional workflow
-        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/selection-workflow.js && node --check prototype/program-monitor.js && node --check prototype/capcut-workflow.js
+        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/selection-workflow.js && node --check prototype/program-monitor.js && node --check prototype/capcut-workflow.js && node --check prototype/playback-gap-guard.js && node --check prototype/composer-runtime.js
       - name: Test media utilities
         run: node desktop/tests/media-utils.test.js
       - name: Test timeline engine
