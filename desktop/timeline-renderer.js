@@ -46,6 +46,38 @@ function audioFilterForClip(clip,sourceLabel,label){const sourceIn=Math.max(0,n(
 function buildFilterGraph(plan){const{width,height,fps,duration,videoClips,audioClips}=plan,pads=allocateSourcePads(plan),lines=[...pads.lines,`color=c=black:s=${width}x${height}:r=${fps}:d=${duration.toFixed(6)}[base0]`];let composite='base0';videoClips.forEach((clip,i)=>{const label=`vc${i}`;lines.push(videoFilterForClip(clip,pads.nextVideo(clip),label,width,height,fps));const next=`vcomp${i}`;lines.push(`[${composite}][${label}]overlay=eof_action=pass:shortest=0:format=auto[${next}]`);composite=next;});lines.push(`[${composite}]trim=duration=${duration.toFixed(6)},setpts=PTS-STARTPTS,format=yuv420p[vout]`);audioClips.forEach((clip,i)=>lines.push(audioFilterForClip(clip,pads.nextAudio(clip),`ac${i}`)));if(audioClips.length===1)lines.push(`[ac0]atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS[aout]`);else if(audioClips.length>1){const inputs=audioClips.map((_,i)=>`[ac${i}]`).join('');lines.push(`${inputs}amix=inputs=${audioClips.length}:normalize=0:dropout_transition=0,atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS[aout]`);}return{graph:lines.join(';\n'),hasAudio:audioClips.length>0};}
 async function availableEncoders(){try{const result=await runProcess('ffmpeg',['-hide_banner','-encoders']);return`${result.stdout}\n${result.stderr}`;}catch(_){return'';}}
 async function selectVideoEncoder(){const forced=process.env.DIRECTORCUT_VIDEO_ENCODER;if(forced)return{name:forced,args:['-c:v',forced]};const text=await availableEncoders(),candidates=process.platform==='darwin'?[['h264_videotoolbox',['-c:v','h264_videotoolbox','-b:v','10M']]]:process.platform==='win32'?[['h264_nvenc',['-c:v','h264_nvenc','-preset','p4','-cq','20']],['h264_qsv',['-c:v','h264_qsv','-global_quality','20']],['h264_amf',['-c:v','h264_amf','-quality','balanced','-b:v','10M']]]:[['h264_nvenc',['-c:v','h264_nvenc','-preset','p4','-cq','20']],['h264_qsv',['-c:v','h264_qsv','-global_quality','20']]];for(const[name,args]of candidates)if(new RegExp(`\\b${name}\\b`).test(text))return{name,args};return{name:'libx264',args:['-c:v','libx264','-preset','veryfast','-crf','18']};}
-function fallbackSoftwareArgs(args){const out=args.slice(),encAt=out.indexOf('-c:v');if(encAt<0)return out;let end=out.length;for(let i=encAt+2;i<out.length;i++){if(['-pix_fmt','-c:a','-an','-t','-movflags'].includes(out[i])){end=i;break;}}out.splice(encAt,end-encAt,'-c:v','libx264','-preset','veryfast','-crf','18');return out;}
-async function renderTimelineProject({project,outputPath}){if(!project?.timeline)throw new Error('This project has no timeline.');const plan=buildRenderPlan(project),{graph,hasAudio}=buildFilterGraph(plan),temp=fs.mkdtempSync(path.join(os.tmpdir(),'directorcut-render-')),graphFile=path.join(temp,'filter.txt');fs.writeFileSync(graphFile,graph,'utf8');try{const args=['-y'];for(const source of plan.sources)args.push('-i',source);args.push('-/filter_complex',graphFile,'-map','[vout]');if(hasAudio)args.push('-map','[aout]');const encoder=await selectVideoEncoder();args.push(...encoder.args,'-pix_fmt','yuv420p','-r',String(plan.fps));if(hasAudio)args.push('-c:a','aac','-b:a','192k');else args.push('-an');args.push('-t',plan.duration.toFixed(6),'-movflags','+faststart',outputPath);try{await runProcess('ffmpeg',args);return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,encoder:encoder.name};}catch(error){if(encoder.name==='libx264')throw error;await runProcess('ffmpeg',fallbackSoftwareArgs(args));return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,encoder:'libx264',hardwareFallback:true};}}finally{fs.rmSync(temp,{recursive:true,force:true});}}
+function filterGraphOptionUnsupported(error, option){const text=String(error?.message||error||'').toLowerCase();const needle=option.toLowerCase().replace(/^-/, '');return(text.includes('unrecognized option')||text.includes('option not found')||text.includes('error splitting the argument list'))&&(text.includes(needle)||text.includes('filter_complex'));}
+function makeRenderArgs(plan,graphFile,hasAudio,filterOption,encoderArgs,outputPath){const args=['-y'];for(const source of plan.sources)args.push('-i',source);args.push(filterOption,graphFile,'-map','[vout]');if(hasAudio)args.push('-map','[aout]');args.push(...encoderArgs,'-pix_fmt','yuv420p','-r',String(plan.fps));if(hasAudio)args.push('-c:a','aac','-b:a','192k');else args.push('-an');args.push('-t',plan.duration.toFixed(6),'-movflags','+faststart',outputPath);return args;}
+async function renderTimelineProject({project,outputPath}){
+  if(!project?.timeline)throw new Error('This project has no timeline.');
+  const plan=buildRenderPlan(project),{graph,hasAudio}=buildFilterGraph(plan),temp=fs.mkdtempSync(path.join(os.tmpdir(),'directorcut-render-')),graphFile=path.join(temp,'filter.txt');
+  fs.writeFileSync(graphFile,graph,'utf8');
+  try{
+    const encoder=await selectVideoEncoder();
+    const software=['-c:v','libx264','-preset','veryfast','-crf','18'];
+    const filterOptions=['-/filter_complex','-filter_complex_script'];
+    let lastError=null;
+    for(const filterOption of filterOptions){
+      const hwArgs=makeRenderArgs(plan,graphFile,hasAudio,filterOption,encoder.args,outputPath);
+      try{
+        await runProcess('ffmpeg',hwArgs);
+        return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,encoder:encoder.name,filterOption};
+      }catch(error){
+        lastError=error;
+        if(filterGraphOptionUnsupported(error,filterOption))continue;
+        if(encoder.name==='libx264')throw error;
+        const swArgs=makeRenderArgs(plan,graphFile,hasAudio,filterOption,software,outputPath);
+        try{
+          await runProcess('ffmpeg',swArgs);
+          return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,encoder:'libx264',hardwareFallback:true,filterOption};
+        }catch(swError){
+          lastError=swError;
+          if(filterGraphOptionUnsupported(swError,filterOption))continue;
+          throw swError;
+        }
+      }
+    }
+    throw lastError||new Error('FFmpeg does not support a compatible filter graph file option.');
+  }finally{fs.rmSync(temp,{recursive:true,force:true});}
+}
 module.exports={timelineDuration,normalizedKeyframes,piecewiseExpression,buildRenderPlan,buildFilterGraph,selectVideoEncoder,renderTimelineProject};
