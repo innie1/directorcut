@@ -1,4 +1,5 @@
 const path = require('path');
+const FX = require('../prototype/effects-color-utils');
 
 const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
 const ns = seconds => Math.max(0, Math.round(n(seconds) * 1e9));
@@ -16,12 +17,30 @@ function keyframeField(clip, property, fallback = null) {
   return encodeField(normalized);
 }
 
+function effectFields(clip) {
+  const color = FX.getEffect(clip, 'color');
+  const blur = FX.getEffect(clip, 'blur');
+  const sharpen = FX.getEffect(clip, 'sharpen');
+  const vignette = FX.getEffect(clip, 'vignette');
+  const colorEnabled = color?.enabled !== false;
+  return [
+    colorEnabled ? n(color?.params?.exposure) : 0,
+    colorEnabled ? n(color?.params?.contrast, 1) : 1,
+    colorEnabled ? n(color?.params?.saturation, 1) : 1,
+    colorEnabled ? n(color?.params?.temperature) : 0,
+    colorEnabled ? n(color?.params?.tint) : 0,
+    blur?.enabled ? n(blur?.params?.radius) : 0,
+    sharpen?.enabled ? n(sharpen?.params?.amount) : 0,
+    vignette?.enabled ? n(vignette?.params?.amount) : 0
+  ];
+}
+
 function buildTimelineManifest(project = {}) {
   const timeline = project.timeline || { tracks: [] };
   const fps = n(timeline.fps || project.media?.frameRate, 30);
   const canvasWidth = Math.max(0, Math.round(n(project.canvas?.width || project.media?.width)));
   const canvasHeight = Math.max(0, Math.round(n(project.canvas?.height || project.media?.height)));
-  const lines = ['DIRECTORCUT_TIMELINE_V2', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`];
+  const lines = ['DIRECTORCUT_TIMELINE_V3', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`];
   let clips = 0;
   let mediaLayer = 0;
   let duration = 0;
@@ -54,7 +73,8 @@ function buildTimelineManifest(project = {}) {
         keyframeField(clip, 'rotation', 0),
         keyframeField(clip, 'opacity', 1),
         keyframeField(clip, 'speed', 1),
-        keyframeField(clip, 'volume', 1)
+        keyframeField(clip, 'volume', 1),
+        ...effectFields(clip)
       ].join('\t'));
       clips++;
       duration = Math.max(duration, start + clipDuration);
@@ -65,4 +85,4 @@ function buildTimelineManifest(project = {}) {
   return { text: `${lines.join('\n')}\n`, fps, clips, duration, canvasWidth, canvasHeight };
 }
 
-module.exports = { buildTimelineManifest, ns, keyframeField };
+module.exports = { buildTimelineManifest, ns, keyframeField, effectFields };
