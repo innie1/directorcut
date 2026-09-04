@@ -1,0 +1,27 @@
+name: DirectorCut CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SQLite development package
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - name: Configure
+        run: cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF
+      - name: Build
+        run: cmake --build build -j2
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Check JavaScript and Python syntax
+        run: |
+          node --check desktop/main.js
+          node --check desktop/preload.js
+          node --check desktop/media-utils.js
+          node --check prototype/app.js
+          node desktop/tests/media-utils.test.js
+          python3 -m py_compile scripts/transcribe_local.py
