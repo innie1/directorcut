@@ -10,6 +10,7 @@ function buildTimelineManifest(project = {}) {
   const lines = ['DIRECTORCUT_TIMELINE_V1', `fps\t${fps}`];
   let clips = 0;
   let mediaLayer = 0;
+  let duration = 0;
 
   (timeline.tracks || []).forEach(track => {
     if (!track || track.locked === 'disabled') return;
@@ -21,24 +22,28 @@ function buildTimelineManifest(project = {}) {
     // track on its own GES layer so linked V/A clips can occupy the same time range.
     const layer = mediaLayer++;
     for (const clip of track.clips || []) {
-      if (!clip?.sourcePath || n(clip.duration) <= 0) continue;
+      const clipDuration = n(clip?.duration);
+      if (!clip?.sourcePath || clipDuration <= 0) continue;
+      const start = Math.max(0, n(clip.start));
       const source = path.resolve(String(clip.sourcePath));
       lines.push([
         'clip',
         track.kind,
         layer,
-        ns(clip.start),
+        ns(start),
         ns(clip.sourceIn),
-        Math.max(1, ns(clip.duration)),
+        Math.max(1, ns(clipDuration)),
         encodeField(source),
         encodeField(clip.id || ''),
         encodeField(clip.name || path.basename(source))
       ].join('\t'));
       clips++;
+      // Native preview duration must reflect exactly what GES receives. Hidden
+      // video and muted audio therefore cannot create an invisible dead tail.
+      duration = Math.max(duration, start + clipDuration);
     }
   });
 
-  const duration = Math.max(0, ...((timeline.tracks || []).flatMap(t => (t.clips || []).map(c => n(c.start) + n(c.duration)))));
   lines.push(`end\t${ns(duration)}`);
   return { text: `${lines.join('\n')}\n`, fps, clips, duration };
 }
