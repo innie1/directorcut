@@ -12,25 +12,29 @@ jobs:
       - name: Install native, media, GStreamer and GES dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev ffmpeg pkg-config libgstreamer1.0-dev libges-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          sudo apt-get install -y libsqlite3-dev ffmpeg pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libges-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
       - name: Configure
         run: cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF -DDIRECTORCUT_BUILD_GSTREAMER=ON
       - name: Build
         run: cmake --build build -j2
+      - name: Verify native Program Monitor target
+        run: test -x build/directorcut_program_monitor
       - name: Test native core and GStreamer backend
         run: ctest --test-dir build --output-on-failure
-      - name: Syntax main and preload
-        run: node --check desktop/main.js && node --check desktop/preload.js
+      - name: Syntax desktop host and Program Monitor bridge
+        run: node --check desktop/main-v04.js && node --check desktop/main.js && node --check desktop/preload.js && node --check desktop/native-program-monitor.js && node --check desktop/native-monitor-ipc.js && node --check desktop/timeline-manifest.js
       - name: Syntax media and local AI
         run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
       - name: Syntax timeline engine and base UI
         run: node --check prototype/timeline-engine.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
       - name: Syntax advanced timeline and professional workflow
-        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js
+        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/program-monitor.js
       - name: Test media utilities
         run: node desktop/tests/media-utils.test.js
       - name: Test timeline engine
         run: node desktop/tests/timeline-engine.test.js
+      - name: Test native timeline manifest
+        run: node desktop/tests/timeline-manifest.test.js
       - name: Render real multitrack smoke test
         run: node desktop/tests/timeline-renderer.test.js
       - name: Check local transcription adapter
