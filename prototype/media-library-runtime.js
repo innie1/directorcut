@@ -66,6 +66,17 @@
     toast(mode === 'insert' ? `Inserted ${media.name} at playhead` : `Added ${media.name} to timeline`);
   }
 
+  function addLibraryItems(items = [], options = {}) {
+    const valid=(Array.isArray(items)?items:[items]).filter(item=>item&&!item.error&&(item.path||item.url));
+    if(!valid.length)return[];
+    state.mediaLibrary=MU.mergeLibrary(state.mediaLibrary,valid);
+    const saved=valid.map(item=>state.mediaLibrary.find(entry=>MU.keyFor(entry)===MU.keyFor(item))).filter(Boolean);
+    if(options.select!==false&&saved.length)state.selectedLibraryId=saved[saved.length-1].libraryId;
+    if(options.preview&&saved.length)setActiveSource(saved[saved.length-1],true);else renderLibrary();
+    if(typeof markDirty==='function')markDirty();
+    return saved;
+  }
+
   async function analyzeMediaItem(media){
     if(!media?.path||!window.directorcut?.desktop||typeof window.directorcut.analyzeMedia!=='function'){toast('Footage analysis requires a local desktop media file.');return;}
     if(analyzing.has(media.libraryId))return;
@@ -95,7 +106,7 @@
       card.className = `mediaLibraryItem${state.selectedLibraryId === media.libraryId ? ' selected' : ''}${media.intelligence ? ' analyzed' : ''}`;
       card.dataset.mediaId = media.libraryId;
       card.draggable = true;
-      card.innerHTML = `<div class="mediaLibraryThumb"><span>▶</span></div><div class="mediaLibraryText"><strong></strong><small class="mediaMeta"></small><small class="mediaIntelligence" hidden></small></div><div class="mediaLibraryActions"><button type="button" data-media-action="append" title="Append to end of timeline">＋ Add</button><button type="button" data-media-action="insert" title="Insert at playhead and move later clips">Insert</button><button type="button" data-media-action="preview" title="Preview this source without changing the timeline">Preview</button><button type="button" data-media-action="analyze" title="Analyze shots, silence, duplicates and quality locally">Analyze</button></div>`;
+      card.innerHTML = `<div class="mediaLibraryThumb"><span>${media.source==='recording'?'●':'▶'}</span></div><div class="mediaLibraryText"><strong></strong><small class="mediaMeta"></small><small class="mediaIntelligence" hidden></small></div><div class="mediaLibraryActions"><button type="button" data-media-action="append" title="Append to end of timeline">＋ Add</button><button type="button" data-media-action="insert" title="Insert at playhead and move later clips">Insert</button><button type="button" data-media-action="preview" title="Preview this source without changing the timeline">Preview</button><button type="button" data-media-action="analyze" title="Analyze shots, silence, duplicates and quality locally">Analyze</button></div>`;
       card.querySelector('strong').textContent = media.name || 'Untitled video';
       card.querySelector('.mediaMeta').textContent = meta(media);
       const intelligence=card.querySelector('.mediaIntelligence'),summary=intelligenceText(media);if(summary){intelligence.textContent=`✦ ${summary}`;intelligence.hidden=false;}
@@ -136,12 +147,9 @@
     if (!items?.length) return;
     const valid = items.filter(item => item && !item.error);
     const errors = items.filter(item => item?.error);
-    state.mediaLibrary = MU.mergeLibrary(state.mediaLibrary, valid);
-    const added = valid.map(item => state.mediaLibrary.find(saved => MU.keyFor(saved) === MU.keyFor(item))).filter(Boolean);
-    if (!state.selectedLibraryId && added[0]) state.selectedLibraryId = added[0].libraryId;
+    const added = addLibraryItems(valid, { select:!state.selectedLibraryId });
     if (!hasTimelineVideo() && added[0]) setActiveSource(added[0], true);
     else renderLibrary();
-    if (typeof markDirty === 'function') markDirty();
     toast(`${added.length} media item${added.length === 1 ? '' : 's'} imported${errors.length ? ` · ${errors.length} failed` : ''}`);
   }
 
@@ -150,8 +158,7 @@
       libraryId:`browser-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`,
       name:file.name, path:null, url:URL.createObjectURL(file), duration:0, frameRate:'30/1', browserFile:file
     }));
-    state.mediaLibrary = MU.mergeLibrary(state.mediaLibrary, incoming);
-    renderLibrary();
+    addLibraryItems(incoming);
     toast(`${incoming.length} media item${incoming.length === 1 ? '' : 's'} imported`);
   }
 
@@ -172,11 +179,9 @@
   if (typeof acceptDesktopMedia === 'function') {
     acceptDesktopMedia = async media => {
       if (!media) return;
-      state.mediaLibrary = MU.mergeLibrary(state.mediaLibrary, [media]);
-      const saved = state.mediaLibrary.find(item => MU.keyFor(item) === MU.keyFor(media));
+      const [saved] = addLibraryItems([media]);
       if (saved && !hasTimelineVideo()) setActiveSource(saved, true);
       else renderLibrary();
-      if (typeof markDirty === 'function') markDirty();
     };
   }
 
@@ -228,5 +233,5 @@
   }
 
   renderLibrary();
-  window.DirectorCutMediaLibraryRuntime={renderLibrary,analyzeMediaItem,intelligenceText};
+  window.DirectorCutMediaLibraryRuntime={renderLibrary,addLibraryItems,addMediaToTimeline,setActiveSource,analyzeMediaItem,intelligenceText};
 })();
