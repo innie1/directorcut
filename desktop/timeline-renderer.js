@@ -32,10 +32,11 @@ function piecewiseExpression(keyframes, defaultValue, variable='T') {
   return expr;
 }
 function buildRenderPlan(project={}) {
-  const timeline=project.timeline||{tracks:[]},fps=parseFps(project.media?.frameRate||timeline.fps||30),width=even(project.media?.width||1920),height=even(project.media?.height||1080),duration=Math.max(1/fps,timelineDuration(timeline),n(project.duration),n(project.media?.duration));
+  const timeline=project.timeline||{tracks:[]},fps=parseFps(project.media?.frameRate||timeline.fps||30),width=even(project.media?.width||1920),height=even(project.media?.height||1080);
   const videoTracks=(timeline.tracks||[]).filter(t=>t.kind==='video'&&!t.hidden).sort((a,b)=>trackNumber(a.id)-trackNumber(b.id)),audioTracks=(timeline.tracks||[]).filter(t=>t.kind==='audio'&&!t.muted);
   const videoClips=videoTracks.flatMap(t=>(t.clips||[]).map(c=>({...c,_track:t.id}))).filter(c=>c.sourcePath&&n(c.duration)>0),audioClips=audioTracks.flatMap(t=>(t.clips||[]).map(c=>({...c,_track:t.id}))).filter(c=>c.sourcePath&&n(c.duration)>0);
   if(!videoClips.length)throw new Error('The timeline has no renderable video clips.');
+  const duration=Math.max(1/fps,...videoClips.map(clipEnd),...audioClips.map(clipEnd));
   const sources=[],sourceIndex=new Map();for(const clip of [...videoClips,...audioClips]){const p=path.resolve(clip.sourcePath);if(!sourceIndex.has(p)){sourceIndex.set(p,sources.length);sources.push(p);}}
   return{fps,width,height,duration,videoClips,audioClips,sources,sourceIndex};
 }
