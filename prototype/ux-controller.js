@@ -11,12 +11,22 @@
   const rightPanel = document.querySelector('.right');
   const main = document.querySelector('main');
   const composer = document.querySelector('#floatingComposer');
+  const videoEl = document.querySelector('#video');
 
   const policyCopy = {
     Ask: 'Talk and suggest only. No automatic changes.',
     'Co-edit': 'Director proposes edits and waits for approval.',
     Auto: 'Director may apply reversible edits automatically.'
   };
+
+  // Give the video its own clipped viewport. This prevents portrait media from ever
+  // painting into the transport or timeline when the laptop window is short.
+  if (monitor && videoEl && !videoEl.parentElement?.classList.contains('videoViewport')) {
+    const viewport = document.createElement('div');
+    viewport.className = 'videoViewport';
+    monitor.insertBefore(viewport, videoEl);
+    viewport.appendChild(videoEl);
+  }
 
   function syncPolicyUi() {
     const policy = state?.directorPolicy || 'Ask';
@@ -30,10 +40,9 @@
     if (!monitor) return;
     let width = Number(state?.media?.width || 0);
     let height = Number(state?.media?.height || 0);
-    const video = document.querySelector('#video');
-    if ((!width || !height) && video?.videoWidth && video?.videoHeight) {
-      width = video.videoWidth;
-      height = video.videoHeight;
+    if ((!width || !height) && videoEl?.videoWidth && videoEl?.videoHeight) {
+      width = videoEl.videoWidth;
+      height = videoEl.videoHeight;
     }
     monitor.classList.remove('portrait', 'square', 'landscape');
     if (!width || !height) return;
@@ -47,25 +56,39 @@
     const root = document.querySelector('#tracks');
     if (!root || !state?.timeline?.tracks) return;
     const rows = [...root.children];
+    let visibleTracks = 0;
+    let clipCount = 0;
     state.timeline.tracks.forEach((track, index) => {
       const row = rows[index];
       if (!row) return;
       const decorativeEmpty = (track.kind === 'graphic' || track.kind === 'caption') && !(track.clips || []).length;
       row.classList.toggle('emptyTrack', decorativeEmpty);
+      if (!decorativeEmpty) visibleTracks++;
+      clipCount += (track.clips || []).length;
+      const name = row.querySelector('.trackLabel > span');
+      if (name) name.textContent = track.kind === 'video' ? 'Video' : track.kind === 'audio' ? 'Audio' : track.kind === 'caption' ? 'Captions' : track.kind === 'graphic' ? 'Graphics' : track.name;
     });
+    const status = document.querySelector('#status');
+    if (status) {
+      const duration = Math.max(0, window.DirectorTimeline?.duration?.(state.timeline) || 0);
+      const saved = state.dirty ? 'saving…' : 'autosaved';
+      status.textContent = `${visibleTracks} tracks · ${clipCount} clips · ${duration.toFixed(1)}s · ${saved}`;
+    }
+    const selection = document.querySelector('.selectionCard');
+    selection?.classList.toggle('noSelection', !state.selectedClipId);
   }
 
   function compactActivity() {
     if (!activity) return;
     [...activity.querySelectorAll('.message.system')].forEach(node => node.remove());
     const messages = [...activity.querySelectorAll('.message')];
-    while (messages.length > 6) messages.shift()?.remove();
+    while (messages.length > 4) messages.shift()?.remove();
   }
 
   function hideWelcome() { overlay?.classList.add('hidden'); }
   function showWelcome() { overlay?.classList.remove('hidden'); }
 
-  // The composer belongs to Director; on laptop screens it must never sit over the timeline.
+  // The composer belongs to Director; it should never float over the timeline.
   if (rightPanel && composer) rightPanel.appendChild(composer);
 
   // Manual editing is always available. Ask/Co-edit/Auto only controls AI permission.
@@ -98,7 +121,6 @@
     };
   }
 
-  const videoEl = document.querySelector('#video');
   videoEl?.addEventListener('loadedmetadata', syncAspect);
 
   if (typeof loadProjectObject === 'function') {
@@ -112,10 +134,20 @@
     };
   }
 
+  // Once clips exist, the ruler and clip geometry must use the edited timeline length,
+  // not a stale source duration or a script scene-plan duration.
   if (typeof renderTimeline === 'function') {
     const originalRenderTimeline = renderTimeline;
     renderTimeline = function (...args) {
-      const result = originalRenderTimeline.apply(this, args);
+      const timelineDuration = Math.max(0, window.DirectorTimeline?.duration?.(state.timeline) || 0);
+      const savedScenes = state.scenes;
+      if (timelineDuration > 0) {
+        state.duration = timelineDuration;
+        state.scenes = [];
+      }
+      let result;
+      try { result = originalRenderTimeline.apply(this, args); }
+      finally { state.scenes = savedScenes; }
       compactTimeline();
       return result;
     };
@@ -142,7 +174,6 @@
     directorHead.appendChild(collapse);
   }
 
-  // Keep the conversation useful rather than turning it into an event log.
   if (activity) {
     compactActivity();
     new MutationObserver(compactActivity).observe(activity, { childList:true });
