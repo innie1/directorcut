@@ -19,7 +19,7 @@
 <main>
   <aside class="left">
     <h4>PROJECT</h4><button class="nav active">Media</button><button class="nav">Scenes</button><button class="nav">Script</button><button class="nav">References</button><button class="nav">Graphics</button><button class="nav">Skills</button>
-    <div class="drop"><strong>Import footage</strong><small>Media stays on your computer.</small><button id="pickVideo">Choose video</button><input id="videoInput" type="file" accept="video/*"></div>
+    <div class="drop"><strong>Media</strong><small>Open the primary clip or add several local files to one timeline.</small><div class="row"><button id="pickVideo">Open primary</button><button id="addMedia">+ Add media</button></div><input id="videoInput" type="file" accept="video/*"><div id="mediaBin" class="mediaBin"></div></div>
     <div class="drop"><strong>Import script</strong><small>.txt or .md</small><button id="pickScript">Choose script</button><input id="scriptInput" type="file" accept=".txt,.md,text/plain"></div>
     <div class="drop localAiCard"><div class="row"><strong>Local AI</strong><button id="refreshAI" class="iconButton" title="Refresh local AI">↻</button></div><small id="aiStatus">Checking Ollama…</small><select id="ollamaModel" aria-label="Ollama model"><option>Checking models…</option></select><small id="modelMeta">Select any model installed in Ollama.</small><button id="transcribe">Transcribe locally</button><select id="whisperModel" aria-label="Whisper model"><option value="tiny">Whisper tiny</option><option value="base">Whisper base</option><option value="small" selected>Whisper small</option><option value="medium">Whisper medium</option></select></div>
     <div class="drop engineCard"><strong>Playback engine</strong><small id="gstStatus">Checking GStreamer…</small><div class="row"><button id="makeProxy">Build proxy</button><label class="check"><input type="checkbox" id="proxyToggle"> Use proxy</label></div><small id="cacheStatus">Thumbnails and waveform prepare in background.</small></div>
@@ -34,6 +34,6 @@
 </main>
 <section class="timeline"><div class="timelineTop"><div><b>TIMELINE</b><button id="addVideoTrack">+ V Track</button><button id="addAudioTrack">+ A Track</button></div><span id="status">0 tracks · 0 learned decisions · autosave idle</span></div><div id="ruler" class="ruler"></div><div id="tracks" class="tracks"></div></section>
 <div class="floatingComposer" id="floatingComposer"><div id="attachmentChips" class="attachmentChips"></div><div class="composerRow"><button id="attach" class="plusButton" title="Attach files, documents, images, audio or video">+</button><textarea id="prompt" placeholder="Talk to DirectorCut or ask it to edit…"></textarea><button id="send" class="sendButton" title="Send">↑</button></div><div class="composerFooter"><span id="composerMode">Manual · chat & advice</span><span id="autosaveState">Autosave ready</span></div></div>
-<script src="timeline-engine.js"></script><script src="app.js"></script><script src="interaction-controller.js"></script>
+<script src="timeline-engine.js"></script><script src="app.js"></script><script src="interaction-controller.js"></script><script src="stage4-controller.js"></script>
 </body>
 </html>
