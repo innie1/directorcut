@@ -89,14 +89,12 @@
   const addMediaButton = $('#addMedia');
   if (addMediaButton) addMediaButton.onclick = () => addMediaFiles().catch(e => say(`Add media failed: ${e.message}`));
 
-  // Run after app.js pointer handling so Select/Slip can preserve links and Select can cross compatible tracks.
   window.addEventListener('pointermove', ev => {
     const drag = state.drag;
     if (!drag) return;
     const delta = (ev.clientX - drag.startX) / Math.max(1, drag.width) * drag.total;
     const original = TL.findClip(drag.base, drag.clipId);
     if (!original) return;
-
     if (state.activeTool === 'select') {
       const lane = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.lane');
       const targetTrack = lane ? drag.base.tracks.find(t => t.id === lane.dataset.trackId) : null;
@@ -163,26 +161,20 @@
   if (sendButton) sendButton.onclick = async () => {
     const prompt = $('#prompt'), q = prompt.value.trim();
     if (!q) return;
-    say(q,'user'); prompt.value='';
-    sendButton.disabled = true;
+    say(q,'user'); prompt.value=''; sendButton.disabled = true;
     try {
       const selected = state.selectedClipId ? TL.findClip(state.timeline,state.selectedClipId) : null;
       const payload = {
-        request:q,
-        workspaceMode:state.workspaceMode,
-        directorPolicy:state.directorPolicy,
-        model:state.selectedModel,
-        history:state.conversation.slice(-12),
-        currentTime:frameSnap(video.currentTime || 0),
+        request:q, workspaceMode:state.workspaceMode, directorPolicy:state.directorPolicy, model:state.selectedModel,
+        history:state.conversation.slice(-12), currentTime:frameSnap(video.currentTime || 0),
         selection:selected ? { trackId:selected.track.id, clip:selected.clip } : null,
         project:{ name:state.name, duration:Math.max(state.duration,TL.duration(state.timeline)), timeline:state.timeline, learned:state.edits.slice(-24) },
         transcript_excerpt:(state.transcript?.text || state.script || '').slice(0,12000),
-        attachments:(state.attachments||[]).map(a=>({name:a.name,kind:a.kind,text:a.text?.slice?.(0,5000)||null}))
+        attachments:(state.attachments||[]).map(a=>({name:a.name,kind:a.kind,path:(a.kind==='image'||a.kind==='video')?a.path:null,text:a.text?.slice?.(0,5000)||null}))
       };
       let result = desktop ? await window.directorcut.askDirector(payload) : null;
       if (!result?.available) result = fallbackIntent(q);
-      const text = result.text || 'Done.';
-      const ops = Array.isArray(result.operations) ? result.operations : [];
+      const text = result.text || 'Done.', ops = Array.isArray(result.operations) ? result.operations : [];
       if (state.workspaceMode !== 'Director' || state.directorPolicy === 'Ask' || result.intent !== 'edit_task' || !ops.length) { say(text); return; }
       if (state.directorPolicy === 'Co-edit') { showProposal(text,ops,q); state.pendingProposal={text,ops,context:q}; return; }
       const count = applyEnhancedOperations(ops,q);
@@ -193,15 +185,13 @@
 
   const approve = $('#approve'), reject = $('#reject');
   if (approve) approve.onclick = () => {
-    const pending = state.pendingProposal;
-    if (!pending) return;
+    const pending = state.pendingProposal;if (!pending) return;
     const count = applyEnhancedOperations(pending.ops,pending.context || 'approved proposal');
     say(count ? `Applied ${count} approved operation${count===1?'':'s'}.` : 'There was no valid operation to apply.');
     state.pendingProposal=null; $('#proposal').hidden=true;
   };
   if (reject) reject.onclick = () => {
-    const pending=state.pendingProposal;
-    if (pending) learn('rejected',pending.context||'proposal',pending.text||'');
+    const pending=state.pendingProposal;if (pending) learn('rejected',pending.context||'proposal',pending.text||'');
     state.pendingProposal=null; $('#proposal').hidden=true; say('Rejected. I’ll keep that correction in the local learning history.');
   };
 
