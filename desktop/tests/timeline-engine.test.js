@@ -1,10 +1,11 @@
 const assert=require('assert');
 const TL=require('../../prototype/timeline-engine');
-const base=TL.normalizeTimeline({fps:'30/1',tracks:[{id:'V1',kind:'video',clips:[TL.createClip({id:'a',trackId:'V1',start:0,duration:5,sourceDuration:10}),TL.createClip({id:'b',trackId:'V1',start:5,duration:5,sourceIn:0,sourceDuration:10}),TL.createClip({id:'c',trackId:'V1',start:10,duration:5,sourceIn:0,sourceDuration:10})]}]});
-assert.equal(TL.snapTime(1.02,30),1.0333333333333334);
-const moved=TL.moveClip(base,'b',7,{snap:false});assert.equal(TL.findClip(moved,'b').clip.start,7);
-const slipped=TL.slipClip(base,'b',2);assert.equal(TL.findClip(slipped,'b').clip.sourceIn,2);
-const slide=TL.slideClip(base,'b',1);assert.equal(TL.findClip(slide,'b').clip.start,6);assert.equal(TL.findClip(slide,'c').clip.start,11);
+const base=TL.normalizeTimeline({fps:'30/1',tracks:[{id:'V1',kind:'video',clips:[TL.createClip({id:'a',trackId:'V1',start:0,duration:5,sourceDuration:10}),TL.createClip({id:'b',trackId:'V1',start:5,duration:5,sourceIn:2,sourceDuration:12}),TL.createClip({id:'c',trackId:'V1',start:10,duration:5,sourceIn:2,sourceDuration:12})]}]});
+assert.equal(TL.snapDelta(-1.02,30),-1.0333333333333334);
+const slipped=TL.slipClip(base,'b',-1);assert.equal(TL.findClip(slipped,'b').clip.sourceIn,1);
+const slideL=TL.slideClip(base,'b',-1);assert.equal(TL.findClip(slideL,'b').clip.start,4);assert.equal(TL.findClip(slideL,'c').clip.sourceIn,1);
+const slideR=TL.slideClip(base,'b',1);assert.equal(TL.findClip(slideR,'b').clip.start,6);assert.equal(TL.findClip(slideR,'c').clip.start,11);
+const rollL=TL.rollBoundary(base,'a','b',-1);assert.equal(TL.findClip(rollL,'a').clip.duration,4);assert.equal(TL.findClip(rollL,'b').clip.sourceIn,1);
 const ripple=TL.rippleDelete(base,2,4);assert.equal(TL.findClip(ripple,'a').clip.duration,3);assert.equal(TL.findClip(ripple,'b').clip.start,3);
 const keyed=TL.addKeyframe(base,'b','opacity',6,.5);assert.equal(TL.findClip(keyed,'b').clip.keyframes.opacity[0].time,1);
 console.log('timeline engine tests passed');
