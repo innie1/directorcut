@@ -228,18 +228,39 @@ public:
 
         GstElement* video_sink = nullptr;
         GstElement* audio_sink = nullptr;
+        const char* video_sink_name = nullptr;
         if (headless) {
             video_sink = gst_element_factory_make("fakesink", "directorcut-video-sink");
+            video_sink_name = video_sink ? "fakesink" : nullptr;
             audio_sink = gst_element_factory_make("fakesink", "directorcut-audio-sink");
         } else {
 #ifdef _WIN32
-            video_sink = gst_element_factory_make("d3d11videosink", "directorcut-video-sink");
-            if (!video_sink) video_sink = gst_element_factory_make("d3d12videosink", "directorcut-video-sink");
+            // The native monitor runs in a helper process while the target HWND is
+            // owned by Electron. d3d11videosink subclasses an external HWND on
+            // Windows, which is not reliable across process boundaries and can
+            // prevent the GES pipeline from prerolling. glimagesink implements
+            // GstVideoOverlay without that D3D11 subclass path, so prefer it.
+            video_sink = gst_element_factory_make("glimagesink", "directorcut-video-sink");
+            video_sink_name = video_sink ? "glimagesink" : nullptr;
+            if (!video_sink) {
+                video_sink = gst_element_factory_make("d3d12videosink", "directorcut-video-sink");
+                video_sink_name = video_sink ? "d3d12videosink" : nullptr;
+            }
+            if (!video_sink) {
+                video_sink = gst_element_factory_make("d3d11videosink", "directorcut-video-sink");
+                video_sink_name = video_sink ? "d3d11videosink" : nullptr;
+            }
+#else
+            video_sink = gst_element_factory_make("glimagesink", "directorcut-video-sink");
+            video_sink_name = video_sink ? "glimagesink" : nullptr;
 #endif
-            if (!video_sink) video_sink = gst_element_factory_make("glimagesink", "directorcut-video-sink");
-            if (!video_sink) video_sink = gst_element_factory_make("autovideosink", "directorcut-video-sink");
+            if (!video_sink) {
+                video_sink = gst_element_factory_make("autovideosink", "directorcut-video-sink");
+                video_sink_name = video_sink ? "autovideosink" : nullptr;
+            }
             audio_sink = gst_element_factory_make("autoaudiosink", "directorcut-audio-sink");
         }
+        if (video_sink_name) std::cerr << "INFO\tVIDEO_SINK\t" << video_sink_name << std::endl;
         if (video_sink) {
             g_object_ref_sink(video_sink);
             ges_pipeline_preview_set_video_sink(pipeline_, video_sink);
@@ -279,7 +300,7 @@ public:
         GstState pending = GST_STATE_VOID_PENDING;
         const GstStateChangeReturn preroll = gst_element_get_state(GST_ELEMENT(pipeline_), &current, &pending, 8 * GST_SECOND);
         if (preroll == GST_STATE_CHANGE_FAILURE || current < GST_STATE_PAUSED) {
-            error = "GES preview pipeline did not preroll";
+            error = std::string("GES preview pipeline did not preroll") + (video_sink_name ? std::string(" with ") + video_sink_name : std::string());
             return false;
         }
         for (const auto& warning : warnings) std::cerr << "WARN\t" << warning << std::endl;
