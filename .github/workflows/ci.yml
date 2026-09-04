@@ -59,7 +59,7 @@ jobs:
       - name: Syntax media and local AI
         run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
       - name: Syntax timeline engine and base UI
-        run: node --check prototype/timeline-engine.js && node --check prototype/caption-utils.js && node --check prototype/selection-actions.js && node --check prototype/preview-gap-utils.js && node --check prototype/media-library-utils.js && node --check prototype/media-library-runtime.js && node --check prototype/edit-undo-utils.js && node --check prototype/professional-timeline-utils.js && node --check prototype/professional-timeline-runtime.js && node --check prototype/professional-inspector-utils.js && node --check prototype/effects-color-utils.js && node --check prototype/transitions-utils.js && node --check prototype/professional-inspector.js && node --check prototype/native-inspector-live.js && node --check prototype/effects-color-runtime.js && node --check prototype/transitions-runtime.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
+        run: node --check prototype/timeline-engine.js && node --check prototype/caption-utils.js && node --check prototype/selection-actions.js && node --check prototype/preview-gap-utils.js && node --check prototype/media-library-utils.js && node --check prototype/media-library-runtime.js && node --check prototype/edit-undo-utils.js && node --check prototype/professional-timeline-utils.js && node --check prototype/professional-timeline-runtime.js && node --check prototype/professional-inspector-utils.js && node --check prototype/audio-post-utils.js && node --check prototype/advanced-inspector-utils.js && node --check prototype/effects-color-utils.js && node --check prototype/transitions-utils.js && node --check prototype/professional-inspector.js && node --check prototype/advanced-inspector.js && node --check prototype/native-inspector-live.js && node --check prototype/effects-color-runtime.js && node --check prototype/transitions-runtime.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
       - name: Syntax advanced timeline and professional workflow
         run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/selection-workflow.js && node --check prototype/program-monitor.js && node --check prototype/capcut-workflow.js && node --check prototype/playback-gap-guard.js && node --check prototype/composer-runtime.js && node --check prototype/edit-undo-runtime.js && node --check prototype/home-dashboard.js
       - name: Test media utilities
@@ -80,13 +80,17 @@ jobs:
         run: node desktop/tests/professional-timeline-utils.test.js
       - name: Test professional inspector properties
         run: node desktop/tests/professional-inspector-utils.test.js
+      - name: Test Stage 3 advanced inspector properties
+        run: node desktop/tests/advanced-inspector-utils.test.js
+      - name: Test professional audio processing
+        run: node desktop/tests/audio-post-utils.test.js
       - name: Test color and effects model
         run: node desktop/tests/effects-color-utils.test.js
       - name: Test transitions and extensible clip data
         run: node desktop/tests/transitions-utils.test.js
       - name: Test native timeline V5 caption/graphic manifest
         run: node desktop/tests/timeline-manifest.test.js
-      - name: Render real multitrack and transition smoke test
+      - name: Render real Stage 3 multitrack and transition smoke test
         run: node desktop/tests/timeline-renderer.test.js
       - name: Check local transcription adapter
         run: python3 -m py_compile scripts/transcribe_local.py
