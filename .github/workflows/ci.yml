@@ -32,15 +32,20 @@ jobs:
           const { buildTimelineManifest } = require('./desktop/timeline-manifest');
           const source = '/tmp/directorcut-monitor.ogv';
           const project = { media:{width:320,height:240,frameRate:24}, timeline:{ fps:24, tracks:[
-            {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{x:[{time:0,value:0},{time:.32,value:12}],scale:[{time:0,value:1},{time:.32,value:.9}],opacity:[{time:0,value:1},{time:.32,value:.8}],rotation:[{time:0,value:0},{time:.32,value:5}],speed:[{time:0,value:1.25}]}}]},
+            {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{x:[{time:0,value:0},{time:.32,value:12}],scale:[{time:0,value:1},{time:.32,value:.9}],opacity:[{time:0,value:1},{time:.32,value:.8}],rotation:[{time:0,value:0},{time:.32,value:5}],speed:[{time:0,value:1.25}]},effects:[
+              {id:'color',type:'color',enabled:true,params:{exposure:.5,contrast:1.1,saturation:1.2,temperature:15,tint:-8}},
+              {id:'blur',type:'blur',enabled:true,params:{radius:2}},
+              {id:'sharpen',type:'sharpen',enabled:true,params:{amount:.3}},
+              {id:'vignette',type:'vignette',enabled:true,params:{amount:.2}}
+            ]}]},
             {id:'A1',kind:'audio',clips:[{id:'a1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{volume:[{time:0,value:1},{time:.32,value:.7}],speed:[{time:0,value:1.25}]}}]}
           ]}};
           fs.writeFileSync('/tmp/directorcut-monitor.timeline', buildTimelineManifest(project).text);
           NODE
-          printf 'DURATION\nSEEK\t100000000\nSET\tv1\topacity\t0.6\nSET\tv1\tx\t18\nSET\tv1\tscale\t0.85\nSET\tv1\trotation\t7\nSET\ta1\tvolume\t0.5\nPLAY\nPAUSE\nQUIT\n' | build/directorcut_program_monitor --headless --manifest /tmp/directorcut-monitor.timeline 2>&1 | tee /tmp/directorcut-monitor.out
+          printf 'DURATION\nSEEK\t100000000\nSET\tv1\topacity\t0.6\nSET\tv1\tx\t18\nSET\tv1\tscale\t0.85\nSET\tv1\trotation\t7\nSET\ta1\tvolume\t0.5\nSET\tv1\teffect.color.exposure\t0.8\nSET\tv1\teffect.color.contrast\t1.2\nSET\tv1\teffect.color.saturation\t1.3\nSET\tv1\teffect.color.temperature\t25\nSET\tv1\teffect.color.tint\t-12\nSET\tv1\teffect.blur.radius\t3\nPLAY\nPAUSE\nQUIT\n' | build/directorcut_program_monitor --headless --manifest /tmp/directorcut-monitor.timeline 2>&1 | tee /tmp/directorcut-monitor.out
           grep -q '^READY' /tmp/directorcut-monitor.out
           grep -q $'^OK\tSEEK' /tmp/directorcut-monitor.out
-          test "$(grep -c $'^OK\tSET' /tmp/directorcut-monitor.out)" -eq 5
+          test "$(grep -c $'^OK\tSET' /tmp/directorcut-monitor.out)" -eq 11
           grep -q $'^OK\tPLAY' /tmp/directorcut-monitor.out
           grep -q $'^OK\tPAUSE' /tmp/directorcut-monitor.out
       - name: Test native core and GStreamer backend
