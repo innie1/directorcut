@@ -40,7 +40,9 @@ function buildTimelineManifest(project = {}) {
   const fps = n(timeline.fps || project.media?.frameRate, 30);
   const canvasWidth = Math.max(0, Math.round(n(project.canvas?.width || project.media?.width)));
   const canvasHeight = Math.max(0, Math.round(n(project.canvas?.height || project.media?.height)));
-  const lines = ['DIRECTORCUT_TIMELINE_V3', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`];
+  const transitions = (Array.isArray(timeline.transitions) ? timeline.transitions : []).filter(t => t?.fromClipId && t?.toClipId);
+  const nativeTransitionSafe = transitions.every(t => (t.type || 'dissolve') === 'dissolve');
+  const lines = ['DIRECTORCUT_TIMELINE_V4', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`, `auto-transition\t${transitions.length && nativeTransitionSafe ? 1 : 0}`];
   let clips = 0;
   let videoClips = 0;
   let audioClips = 0;
@@ -85,8 +87,20 @@ function buildTimelineManifest(project = {}) {
     }
   });
 
+  for (const transition of transitions) {
+    lines.push([
+      'transition',
+      encodeField(transition.id || ''),
+      encodeField(transition.trackId || ''),
+      encodeField(transition.fromClipId),
+      encodeField(transition.toClipId),
+      encodeField(transition.type || 'dissolve'),
+      ns(transition.duration || .5)
+    ].join('\t'));
+  }
+
   lines.push(`end\t${ns(duration)}`);
-  return { text: `${lines.join('\n')}\n`, fps, clips, videoClips, audioClips, duration, canvasWidth, canvasHeight };
+  return { text: `${lines.join('\n')}\n`, fps, clips, videoClips, audioClips, transitions:transitions.length, nativeTransitionSafe, duration, canvasWidth, canvasHeight };
 }
 
 module.exports = { buildTimelineManifest, ns, keyframeField, effectFields };
