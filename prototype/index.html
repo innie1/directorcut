@@ -11,13 +11,8 @@
   <div class="brand">DIRECTOR<span>CUT</span></div>
   <input id="projectName" class="projectName" value="Untitled Project" aria-label="Project name">
   <div class="spacer"></div>
-  <div class="workspaceToggle" title="Manual keeps AI advisory. Director allows typed editing actions.">
-    <button class="active" data-workspace="Manual">Manual</button>
-    <button data-workspace="Director">Director</button>
-  </div>
-  <div class="directorPolicy" id="directorPolicy">
-    <button data-policy="Ask">Ask</button><button class="active" data-policy="Co-edit">Co-edit</button><button data-policy="Auto">Auto</button>
-  </div>
+  <div class="workspaceToggle" title="Manual keeps AI advisory. Director allows typed editing actions."><button class="active" data-workspace="Manual">Manual</button><button data-workspace="Director">Director</button></div>
+  <div class="directorPolicy" id="directorPolicy"><button data-policy="Ask">Ask</button><button class="active" data-policy="Co-edit">Co-edit</button><button data-policy="Auto">Auto</button></div>
   <select id="topModel" class="topModel" aria-label="Local AI model"><option>Local AI…</option></select>
   <button id="openProject">Open</button><button id="saveProject">Save</button><button id="exportSrt">Captions</button><button id="exportVideo" class="primary">Export video</button>
 </header>
@@ -39,6 +34,6 @@
 </main>
 <section class="timeline"><div class="timelineTop"><div><b>TIMELINE</b><button id="addVideoTrack">+ V Track</button><button id="addAudioTrack">+ A Track</button></div><span id="status">0 tracks · 0 learned decisions · autosave idle</span></div><div id="ruler" class="ruler"></div><div id="tracks" class="tracks"></div></section>
 <div class="floatingComposer" id="floatingComposer"><div id="attachmentChips" class="attachmentChips"></div><div class="composerRow"><button id="attach" class="plusButton" title="Attach files, documents, images, audio or video">+</button><textarea id="prompt" placeholder="Talk to DirectorCut or ask it to edit…"></textarea><button id="send" class="sendButton" title="Send">↑</button></div><div class="composerFooter"><span id="composerMode">Manual · chat & advice</span><span id="autosaveState">Autosave ready</span></div></div>
-<script src="timeline-engine.js"></script><script src="app.js"></script>
+<script src="timeline-engine.js"></script><script src="app.js"></script><script src="interaction-controller.js"></script>
 </body>
 </html>
