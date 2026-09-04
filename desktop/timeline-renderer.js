@@ -2,6 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { runProcess, parseFps } = require('./media-utils');
+const FX = require('../prototype/effects-color-utils');
 
 const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
 const even = v => Math.max(2, Math.round(n(v, 2) / 2) * 2);
@@ -54,9 +55,38 @@ function buildRenderPlan(project={}) {
   return{fps,width,height,duration,videoClips,audioClips,sources,sourceIndex};
 }
 function allocateSourcePads(plan){const videoCounts=new Map(),audioCounts=new Map();for(const clip of plan.videoClips){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));videoCounts.set(idx,(videoCounts.get(idx)||0)+1);}for(const clip of plan.audioClips){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));audioCounts.set(idx,(audioCounts.get(idx)||0)+1);}const lines=[],videoQueues=new Map(),audioQueues=new Map();for(const[idx,count]of videoCounts){const labels=Array.from({length:count},(_,i)=>`vsrc${idx}_${i}`);lines.push(count===1?`[${idx}:v]null[${labels[0]}]`:`[${idx}:v]split=${count}${labels.map(x=>`[${x}]`).join('')}`);videoQueues.set(idx,labels);}for(const[idx,count]of audioCounts){const labels=Array.from({length:count},(_,i)=>`asrc${idx}_${i}`);lines.push(count===1?`[${idx}:a]anull[${labels[0]}]`:`[${idx}:a]asplit=${count}${labels.map(x=>`[${x}]`).join('')}`);audioQueues.set(idx,labels);}return{lines,nextVideo(clip){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));return videoQueues.get(idx).shift();},nextAudio(clip){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));return audioQueues.get(idx).shift();}};}
+
+function effectFiltersForClip(clip){
+  const filters=[];
+  const effects=FX.normalizeEffects(clip);
+  const color=effects.find(effect=>effect.type==='color');
+  if(color?.enabled){
+    const exposure=clamp(color.params.exposure,-4,4),contrast=clamp(color.params.contrast,.25,4),saturation=clamp(color.params.saturation,0,4),temperature=clamp(color.params.temperature,-100,100),tint=clamp(color.params.tint,-100,100);
+    if(Math.abs(exposure)>1e-6||Math.abs(contrast-1)>1e-6||Math.abs(saturation-1)>1e-6){
+      const brightness=clamp(exposure/8,-.5,.5);
+      filters.push(`eq=brightness=${brightness.toFixed(6)}:contrast=${contrast.toFixed(6)}:saturation=${saturation.toFixed(6)}`);
+    }
+    if(Math.abs(temperature)>1e-6||Math.abs(tint)>1e-6){
+      const warm=temperature/100,t=tint/100;
+      const rr=clamp(1+warm*.16+t*.08,.5,1.5),gg=clamp(1-t*.14,.5,1.5),bb=clamp(1-warm*.16+t*.08,.5,1.5);
+      filters.push(`colorchannelmixer=rr=${rr.toFixed(6)}:gg=${gg.toFixed(6)}:bb=${bb.toFixed(6)}`);
+    }
+  }
+  const blur=effects.find(effect=>effect.type==='blur');
+  if(blur?.enabled&&blur.params.radius>1e-6)filters.push(`gblur=sigma=${Math.max(.1,blur.params.radius/2).toFixed(6)}`);
+  const sharpen=effects.find(effect=>effect.type==='sharpen');
+  if(sharpen?.enabled&&sharpen.params.amount>1e-6)filters.push(`unsharp=5:5:${clamp(sharpen.params.amount,0,3).toFixed(6)}`);
+  const vignette=effects.find(effect=>effect.type==='vignette');
+  if(vignette?.enabled&&vignette.params.amount>1e-6){
+    const amount=clamp(vignette.params.amount,0,1),angle=Math.PI/2-amount*(Math.PI/3);
+    filters.push(`vignette=angle=${angle.toFixed(6)}`);
+  }
+  return filters;
+}
+
 function videoFilterForClip(clip,sourceLabel,label,width,height,fps){
   const sourceIn=Math.max(0,n(clip.sourceIn)),duration=Math.max(1/fps,n(clip.duration,1)),start=Math.max(0,n(clip.start)),rate=playbackRate(clip),sourceSpan=Math.max(1/fps,duration*rate);
-  const filters=[`[${sourceLabel}]trim=start=${sourceIn.toFixed(6)}:duration=${sourceSpan.toFixed(6)}`,rate===1?'setpts=PTS-STARTPTS':`setpts=(PTS-STARTPTS)/${rate.toFixed(6)}`,`scale=${width}:${height}:force_original_aspect_ratio=decrease`,`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`];
+  const filters=[`[${sourceLabel}]trim=start=${sourceIn.toFixed(6)}:duration=${sourceSpan.toFixed(6)}`,rate===1?'setpts=PTS-STARTPTS':`setpts=(PTS-STARTPTS)/${rate.toFixed(6)}`,`scale=${width}:${height}:force_original_aspect_ratio=decrease`,`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`,...effectFiltersForClip(clip)];
   const scaleKeys=normalizedKeyframes(clip,'scale',1).map(k=>({...k,value:Math.max(.01,Math.min(8,k.value))}));
   if(scaleKeys.length){const z=piecewiseExpression(scaleKeys,1,`on/${fps}`);filters.push(`zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${fps}`);}
   const opacityKeys=normalizedKeyframes(clip,'opacity',1).map(k=>({...k,value:Math.max(0,Math.min(1,k.value))}));
@@ -113,4 +143,4 @@ async function renderTimelineProject({project,outputPath}){
     throw lastError||new Error('FFmpeg does not support a compatible filter graph file option.');
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
 }
-module.exports={timelineDuration,normalizedKeyframes,staticProperty,playbackRate,piecewiseExpression,atempoChain,buildRenderPlan,buildFilterGraph,selectVideoEncoder,renderTimelineProject};
+module.exports={timelineDuration,normalizedKeyframes,staticProperty,playbackRate,piecewiseExpression,atempoChain,effectFiltersForClip,buildRenderPlan,buildFilterGraph,selectVideoEncoder,renderTimelineProject};
