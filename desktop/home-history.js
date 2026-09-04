@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-function attachHomeHistory({ ipcMain, app, shell }) {
+function attachHomeHistory({ ipcMain, app, shell, dialog }) {
   const historyPath = () => path.join(app.getPath('userData'), 'home-history.json');
 
   function readHistory() {
@@ -46,6 +46,16 @@ function attachHomeHistory({ ipcMain, app, shell }) {
     return true;
   }
 
+  function readProject(filePath) {
+    if (typeof filePath !== 'string' || !filePath) throw new Error('Project path is missing.');
+    const ext = path.extname(filePath).toLowerCase();
+    if (!['.directorcut', '.json'].includes(ext)) throw new Error('That is not a DirectorCut project file.');
+    if (!fs.existsSync(filePath)) throw new Error('Project file no longer exists.');
+    const project = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    remember('projects', { path:filePath, name:project?.name || path.basename(filePath), duration:project?.duration || project?.media?.duration || 0 }, 'project');
+    return project;
+  }
+
   ipcMain.handle('home:recent', async () => {
     const history = readHistory();
     history.projects = history.projects.filter(item => item?.path && fs.existsSync(item.path));
@@ -56,15 +66,13 @@ function attachHomeHistory({ ipcMain, app, shell }) {
 
   ipcMain.handle('home:remember-project', async (_event, entry) => remember('projects', entry, 'project'));
   ipcMain.handle('home:remember-export', async (_event, entry) => remember('exports', entry, 'export'));
+  ipcMain.handle('home:open-project', async (_event, filePath) => readProject(filePath));
 
-  ipcMain.handle('home:open-project', async (_event, filePath) => {
-    if (typeof filePath !== 'string' || !filePath) throw new Error('Project path is missing.');
-    const ext = path.extname(filePath).toLowerCase();
-    if (!['.directorcut', '.json'].includes(ext)) throw new Error('That is not a DirectorCut project file.');
-    if (!fs.existsSync(filePath)) throw new Error('Project file no longer exists.');
-    const project = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    remember('projects', { path:filePath, name:project?.name || path.basename(filePath), duration:project?.duration || project?.media?.duration || 0 }, 'project');
-    return project;
+  ipcMain.handle('home:choose-project', async () => {
+    if (!dialog) throw new Error('Project picker is unavailable.');
+    const result = await dialog.showOpenDialog({ properties:['openFile'], filters:[{ name:'DirectorCut Project', extensions:['directorcut','json'] }] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return readProject(result.filePaths[0]);
   });
 
   ipcMain.handle('home:open-export', async (_event, filePath) => {
