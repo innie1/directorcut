@@ -7,6 +7,7 @@ const { attachRecordingStore } = require('./recording-store');
 const { renderCuts, wordsToSrt } = require('./media-utils');
 const { renderTimelineProject } = require('./timeline-renderer-stage4');
 const { analyzeFootage } = require('./footage-intelligence');
+const { analyzeVisualFootage } = require('./visual-intelligence');
 const CE = require('../prototype/caption-editor-utils');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -62,6 +63,19 @@ ipcMain.handle('media:analyze', async (_event, payload = {}) => {
     minSilence:payload.minSilence ?? .35,
     maxQualitySamples:payload.maxQualitySamples ?? 32,
     sampleSize:payload.sampleSize ?? 16
+  });
+});
+
+ipcMain.handle('media:visual-analyze', async (_event, payload = {}) => {
+  const sourcePath = payload?.sourcePath || payload?.path;
+  if (!sourcePath) throw new Error('Choose a local media file before running Visual Intelligence.');
+  if (!payload?.model) throw new Error('Choose an image-capable local AI model before running Visual Intelligence.');
+  return analyzeVisualFootage({
+    sourcePath,
+    model:String(payload.model),
+    footageIntelligence:payload.footageIntelligence || null,
+    maxFrames:payload.maxFrames ?? 12,
+    maxWidth:payload.maxWidth ?? 768
   });
 });
 
