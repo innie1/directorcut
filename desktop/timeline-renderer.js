@@ -45,14 +45,27 @@ function atempoChain(rate) {
   if(Math.abs(value-1)>.000001)parts.push(`atempo=${value.toFixed(6)}`);
   return parts;
 }
+function annotateTransitions(timeline,videoClips,audioClips){
+  const byVideo=new Map(videoClips.map(c=>[c.id,c])),byAudio=new Map(audioClips.map(c=>[c.id,c]));
+  const transitions=[];
+  for(const raw of Array.isArray(timeline.transitions)?timeline.transitions:[]){
+    const from=byVideo.get(raw.fromClipId),to=byVideo.get(raw.toClipId);if(!from||!to)continue;
+    const duration=Math.max(0.001,Math.min(n(raw.duration,.5),n(from.duration),n(to.duration))),tr={id:raw.id,type:raw.type||'dissolve',duration,fromClipId:from.id,toClipId:to.id};
+    from._transitionOut=tr;to._transitionIn=tr;transitions.push(tr);
+    if(from.linkedId&&byAudio.has(from.linkedId))byAudio.get(from.linkedId)._transitionOut=tr;
+    if(to.linkedId&&byAudio.has(to.linkedId))byAudio.get(to.linkedId)._transitionIn=tr;
+  }
+  return transitions;
+}
 function buildRenderPlan(project={}) {
   const timeline=project.timeline||{tracks:[]},fps=parseFps(project.media?.frameRate||timeline.fps||30),width=even(project.media?.width||1920),height=even(project.media?.height||1080);
   const videoTracks=(timeline.tracks||[]).filter(t=>t.kind==='video'&&!t.hidden).sort((a,b)=>trackNumber(a.id)-trackNumber(b.id)),audioTracks=(timeline.tracks||[]).filter(t=>t.kind==='audio'&&!t.muted);
-  const videoClips=videoTracks.flatMap(t=>(t.clips||[]).map(c=>({...c,_track:t.id}))).filter(c=>c.sourcePath&&n(c.duration)>0),audioClips=audioTracks.flatMap(t=>(t.clips||[]).map(c=>({...c,_track:t.id}))).filter(c=>c.sourcePath&&n(c.duration)>0);
+  const videoClips=videoTracks.flatMap(t=>(t.clips||[]).map(c=>({...JSON.parse(JSON.stringify(c)),_track:t.id}))).filter(c=>c.sourcePath&&n(c.duration)>0),audioClips=audioTracks.flatMap(t=>(t.clips||[]).map(c=>({...JSON.parse(JSON.stringify(c)),_track:t.id}))).filter(c=>c.sourcePath&&n(c.duration)>0);
   if(!videoClips.length)throw new Error('The timeline has no renderable video clips.');
+  const transitions=annotateTransitions(timeline,videoClips,audioClips);
   const duration=Math.max(1/fps,...videoClips.map(clipEnd),...audioClips.map(clipEnd));
   const sources=[],sourceIndex=new Map();for(const clip of [...videoClips,...audioClips]){const p=path.resolve(clip.sourcePath);if(!sourceIndex.has(p)){sourceIndex.set(p,sources.length);sources.push(p);}}
-  return{fps,width,height,duration,videoClips,audioClips,sources,sourceIndex};
+  return{fps,width,height,duration,videoClips,audioClips,transitions,sources,sourceIndex};
 }
 function allocateSourcePads(plan){const videoCounts=new Map(),audioCounts=new Map();for(const clip of plan.videoClips){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));videoCounts.set(idx,(videoCounts.get(idx)||0)+1);}for(const clip of plan.audioClips){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));audioCounts.set(idx,(audioCounts.get(idx)||0)+1);}const lines=[],videoQueues=new Map(),audioQueues=new Map();for(const[idx,count]of videoCounts){const labels=Array.from({length:count},(_,i)=>`vsrc${idx}_${i}`);lines.push(count===1?`[${idx}:v]null[${labels[0]}]`:`[${idx}:v]split=${count}${labels.map(x=>`[${x}]`).join('')}`);videoQueues.set(idx,labels);}for(const[idx,count]of audioCounts){const labels=Array.from({length:count},(_,i)=>`asrc${idx}_${i}`);lines.push(count===1?`[${idx}:a]anull[${labels[0]}]`:`[${idx}:a]asplit=${count}${labels.map(x=>`[${x}]`).join('')}`);audioQueues.set(idx,labels);}return{lines,nextVideo(clip){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));return videoQueues.get(idx).shift();},nextAudio(clip){const idx=plan.sourceIndex.get(path.resolve(clip.sourcePath));return audioQueues.get(idx).shift();}};}
 
@@ -62,51 +75,56 @@ function effectFiltersForClip(clip){
   const color=effects.find(effect=>effect.type==='color');
   if(color?.enabled){
     const exposure=clamp(color.params.exposure,-4,4),contrast=clamp(color.params.contrast,.25,4),saturation=clamp(color.params.saturation,0,4),temperature=clamp(color.params.temperature,-100,100),tint=clamp(color.params.tint,-100,100);
-    if(Math.abs(exposure)>1e-6||Math.abs(contrast-1)>1e-6||Math.abs(saturation-1)>1e-6){
-      const brightness=clamp(exposure/8,-.5,.5);
-      filters.push(`eq=brightness=${brightness.toFixed(6)}:contrast=${contrast.toFixed(6)}:saturation=${saturation.toFixed(6)}`);
-    }
-    if(Math.abs(temperature)>1e-6||Math.abs(tint)>1e-6){
-      const warm=temperature/100,t=tint/100;
-      const rr=clamp(1+warm*.16+t*.08,.5,1.5),gg=clamp(1-t*.14,.5,1.5),bb=clamp(1-warm*.16+t*.08,.5,1.5);
-      filters.push(`colorchannelmixer=rr=${rr.toFixed(6)}:gg=${gg.toFixed(6)}:bb=${bb.toFixed(6)}`);
-    }
+    if(Math.abs(exposure)>1e-6||Math.abs(contrast-1)>1e-6||Math.abs(saturation-1)>1e-6){const brightness=clamp(exposure/8,-.5,.5);filters.push(`eq=brightness=${brightness.toFixed(6)}:contrast=${contrast.toFixed(6)}:saturation=${saturation.toFixed(6)}`);}
+    if(Math.abs(temperature)>1e-6||Math.abs(tint)>1e-6){const warm=temperature/100,t=tint/100,rr=clamp(1+warm*.16+t*.08,.5,1.5),gg=clamp(1-t*.14,.5,1.5),bb=clamp(1-warm*.16+t*.08,.5,1.5);filters.push(`colorchannelmixer=rr=${rr.toFixed(6)}:gg=${gg.toFixed(6)}:bb=${bb.toFixed(6)}`);}
   }
-  const blur=effects.find(effect=>effect.type==='blur');
-  if(blur?.enabled&&blur.params.radius>1e-6)filters.push(`gblur=sigma=${Math.max(.1,blur.params.radius/2).toFixed(6)}`);
-  const sharpen=effects.find(effect=>effect.type==='sharpen');
-  if(sharpen?.enabled&&sharpen.params.amount>1e-6)filters.push(`unsharp=5:5:${clamp(sharpen.params.amount,0,3).toFixed(6)}`);
-  const vignette=effects.find(effect=>effect.type==='vignette');
-  if(vignette?.enabled&&vignette.params.amount>1e-6){
-    const amount=clamp(vignette.params.amount,0,1),angle=Math.PI/2-amount*(Math.PI/3);
-    filters.push(`vignette=angle=${angle.toFixed(6)}`);
-  }
+  const blur=effects.find(effect=>effect.type==='blur');if(blur?.enabled&&blur.params.radius>1e-6)filters.push(`gblur=sigma=${Math.max(.1,blur.params.radius/2).toFixed(6)}`);
+  const sharpen=effects.find(effect=>effect.type==='sharpen');if(sharpen?.enabled&&sharpen.params.amount>1e-6)filters.push(`unsharp=5:5:${clamp(sharpen.params.amount,0,3).toFixed(6)}`);
+  const vignette=effects.find(effect=>effect.type==='vignette');if(vignette?.enabled&&vignette.params.amount>1e-6){const amount=clamp(vignette.params.amount,0,1),angle=Math.PI/2-amount*(Math.PI/3);filters.push(`vignette=angle=${angle.toFixed(6)}`);}
   return filters;
 }
-
+function transitionVideoFilters(clip){
+  const filters=[],duration=Math.max(.001,n(clip.duration,1)),tin=clip._transitionIn,tout=clip._transitionOut;
+  if(tout?.type==='dip-black'){const d=Math.min(tout.duration,duration),half=Math.max(.001,d/2);filters.push('format=rgba',`fade=t=out:st=${Math.max(0,duration-d).toFixed(6)}:d=${half.toFixed(6)}:alpha=1`);}
+  if(tin?.type==='dissolve'){const d=Math.min(tin.duration,duration);filters.push('format=rgba',`fade=t=in:st=0:d=${d.toFixed(6)}:alpha=1`);}
+  if(tin?.type==='dip-black'){const d=Math.min(tin.duration,duration),half=Math.max(.001,d/2);filters.push('format=rgba',`fade=t=in:st=${half.toFixed(6)}:d=${half.toFixed(6)}:alpha=1`);}
+  if(tout?.type==='dip-white'){const d=Math.min(tout.duration,duration),half=Math.max(.001,d/2);filters.push(`fade=t=out:st=${Math.max(0,duration-d).toFixed(6)}:d=${half.toFixed(6)}:color=white`);}
+  if(tin?.type==='dip-white'){const d=Math.min(tin.duration,duration),half=Math.max(.001,d/2);filters.push('format=rgba',`fade=t=in:st=${half.toFixed(6)}:d=${half.toFixed(6)}:alpha=1`,`fade=t=in:st=${half.toFixed(6)}:d=${half.toFixed(6)}:color=white`);}
+  return filters;
+}
 function videoFilterForClip(clip,sourceLabel,label,width,height,fps){
   const sourceIn=Math.max(0,n(clip.sourceIn)),duration=Math.max(1/fps,n(clip.duration,1)),start=Math.max(0,n(clip.start)),rate=playbackRate(clip),sourceSpan=Math.max(1/fps,duration*rate);
   const filters=[`[${sourceLabel}]trim=start=${sourceIn.toFixed(6)}:duration=${sourceSpan.toFixed(6)}`,rate===1?'setpts=PTS-STARTPTS':`setpts=(PTS-STARTPTS)/${rate.toFixed(6)}`,`scale=${width}:${height}:force_original_aspect_ratio=decrease`,`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`,...effectFiltersForClip(clip)];
-  const scaleKeys=normalizedKeyframes(clip,'scale',1).map(k=>({...k,value:Math.max(.01,Math.min(8,k.value))}));
-  if(scaleKeys.length){const z=piecewiseExpression(scaleKeys,1,`on/${fps}`);filters.push(`zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${fps}`);}
-  const opacityKeys=normalizedKeyframes(clip,'opacity',1).map(k=>({...k,value:Math.max(0,Math.min(1,k.value))}));
-  if(opacityKeys.length){const alpha=piecewiseExpression(opacityKeys,1,'T');filters.push('format=rgba');filters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${alpha})'`);}
-  const rotationKeys=normalizedKeyframes(clip,'rotation',0).map(k=>({...k,value:clamp(k.value,-360,360)}));
-  if(rotationKeys.length){const angle=piecewiseExpression(rotationKeys,0,'t');filters.push('format=rgba');filters.push(`rotate=angle='(${angle})*PI/180':ow=iw:oh=ih:c=black@0`);}
+  const scaleKeys=normalizedKeyframes(clip,'scale',1).map(k=>({...k,value:Math.max(.01,Math.min(8,k.value))}));if(scaleKeys.length){const z=piecewiseExpression(scaleKeys,1,`on/${fps}`);filters.push(`zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=${fps}`);}
+  const opacityKeys=normalizedKeyframes(clip,'opacity',1).map(k=>({...k,value:Math.max(0,Math.min(1,k.value))}));if(opacityKeys.length){const alpha=piecewiseExpression(opacityKeys,1,'T');filters.push('format=rgba');filters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${alpha})'`);}
+  const rotationKeys=normalizedKeyframes(clip,'rotation',0).map(k=>({...k,value:clamp(k.value,-360,360)}));if(rotationKeys.length){const angle=piecewiseExpression(rotationKeys,0,'t');filters.push('format=rgba');filters.push(`rotate=angle='(${angle})*PI/180':ow=iw:oh=ih:c=black@0`);}
   const xKeys=normalizedKeyframes(clip,'x',0).map(k=>({...k,value:clamp(k.value,-10000,10000)})),yKeys=normalizedKeyframes(clip,'y',0).map(k=>({...k,value:clamp(k.value,-10000,10000)}));
-  if(xKeys.length||yKeys.length){
-    const maxX=Math.max(1,Math.ceil(Math.max(0,...xKeys.map(k=>Math.abs(k.value))))),maxY=Math.max(1,Math.ceil(Math.max(0,...yKeys.map(k=>Math.abs(k.value))))),xExpr=piecewiseExpression(xKeys,0,'t'),yExpr=piecewiseExpression(yKeys,0,'t');
-    filters.push('format=rgba');
-    filters.push(`pad=iw+${maxX*2}:ih+${maxY*2}:${maxX}:${maxY}:color=black@0`);
-    filters.push(`crop=${width}:${height}:x='${maxX}-(${xExpr})':y='${maxY}-(${yExpr})'`);
-  }
+  if(xKeys.length||yKeys.length){const maxX=Math.max(1,Math.ceil(Math.max(0,...xKeys.map(k=>Math.abs(k.value))))),maxY=Math.max(1,Math.ceil(Math.max(0,...yKeys.map(k=>Math.abs(k.value))))),xExpr=piecewiseExpression(xKeys,0,'t'),yExpr=piecewiseExpression(yKeys,0,'t');filters.push('format=rgba');filters.push(`pad=iw+${maxX*2}:ih+${maxY*2}:${maxX}:${maxY}:color=black@0`);filters.push(`crop=${width}:${height}:x='${maxX}-(${xExpr})':y='${maxY}-(${yExpr})'`);}
+  filters.push(...transitionVideoFilters(clip));
   filters.push(`setpts=PTS+${start.toFixed(6)}/TB[${label}]`);return filters.join(',');
 }
 function audioFilterForClip(clip,sourceLabel,label){
   const sourceIn=Math.max(0,n(clip.sourceIn)),duration=Math.max(.001,n(clip.duration,1)),rate=playbackRate(clip),sourceSpan=Math.max(.001,duration*rate),startMs=Math.max(0,Math.round(n(clip.start)*1000)),filters=[`[${sourceLabel}]atrim=start=${sourceIn.toFixed(6)}:duration=${sourceSpan.toFixed(6)}`,'asetpts=PTS-STARTPTS',...atempoChain(rate)];
-  const volumeKeys=normalizedKeyframes(clip,'volume',1).map(k=>({...k,value:Math.max(0,Math.min(8,k.value))}));if(volumeKeys.length)filters.push(`volume='${piecewiseExpression(volumeKeys,1,'t')}':eval=frame`);if(startMs>0)filters.push(`adelay=${startMs}:all=1`);return `${filters.join(',')}[${label}]`;
+  const volumeKeys=normalizedKeyframes(clip,'volume',1).map(k=>({...k,value:Math.max(0,Math.min(8,k.value))}));if(volumeKeys.length)filters.push(`volume='${piecewiseExpression(volumeKeys,1,'t')}':eval=frame`);
+  if(clip._transitionOut){const d=Math.min(duration,Math.max(.001,n(clip._transitionOut.duration,.5)));filters.push(`afade=t=out:st=${Math.max(0,duration-d).toFixed(6)}:d=${d.toFixed(6)}`);}
+  if(clip._transitionIn){const d=Math.min(duration,Math.max(.001,n(clip._transitionIn.duration,.5)));filters.push(`afade=t=in:st=0:d=${d.toFixed(6)}`);}
+  if(startMs>0)filters.push(`adelay=${startMs}:all=1`);return `${filters.join(',')}[${label}]`;
 }
-function buildFilterGraph(plan){const{width,height,fps,duration,videoClips,audioClips}=plan,pads=allocateSourcePads(plan),lines=[...pads.lines,`color=c=black:s=${width}x${height}:r=${fps}:d=${duration.toFixed(6)}[base0]`];let composite='base0';videoClips.forEach((clip,i)=>{const label=`vc${i}`;lines.push(videoFilterForClip(clip,pads.nextVideo(clip),label,width,height,fps));const next=`vcomp${i}`;lines.push(`[${composite}][${label}]overlay=eof_action=pass:shortest=0:format=auto[${next}]`);composite=next;});lines.push(`[${composite}]trim=duration=${duration.toFixed(6)},setpts=PTS-STARTPTS,format=yuv420p[vout]`);audioClips.forEach((clip,i)=>lines.push(audioFilterForClip(clip,pads.nextAudio(clip),`ac${i}`)));if(audioClips.length===1)lines.push(`[ac0]atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS[aout]`);else if(audioClips.length>1){const inputs=audioClips.map((_,i)=>`[ac${i}]`).join('');lines.push(`${inputs}amix=inputs=${audioClips.length}:normalize=0:dropout_transition=0,atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS[aout]`);}return{graph:lines.join(';\n'),hasAudio:audioClips.length>0};}
+function overlayPositionForTransition(clip,width,height){
+  const tr=clip._transitionIn;if(!tr||!String(tr.type).startsWith('slide-'))return{x:'0',y:'0'};
+  const s=n(clip.start),d=Math.max(.001,n(tr.duration,.5)),p=`min(1,max(0,(t-${s.toFixed(6)})/${d.toFixed(6)}))`;
+  if(tr.type==='slide-left')return{x:`main_w*(1-(${p}))`,y:'0'};
+  if(tr.type==='slide-right')return{x:`-main_w*(1-(${p}))`,y:'0'};
+  if(tr.type==='slide-up')return{x:'0',y:`main_h*(1-(${p}))`};
+  if(tr.type==='slide-down')return{x:'0',y:`-main_h*(1-(${p}))`};
+  return{x:'0',y:'0'};
+}
+function buildFilterGraph(plan){
+  const{width,height,fps,duration,videoClips,audioClips}=plan,pads=allocateSourcePads(plan),lines=[...pads.lines,`color=c=black:s=${width}x${height}:r=${fps}:d=${duration.toFixed(6)}[base0]`];let composite='base0';
+  videoClips.forEach((clip,i)=>{const label=`vc${i}`;lines.push(videoFilterForClip(clip,pads.nextVideo(clip),label,width,height,fps));const next=`vcomp${i}`,pos=overlayPositionForTransition(clip,width,height);lines.push(`[${composite}][${label}]overlay=eof_action=pass:shortest=0:format=auto:x='${pos.x}':y='${pos.y}':eval=frame[${next}]`);composite=next;});
+  lines.push(`[${composite}]trim=duration=${duration.toFixed(6)},setpts=PTS-STARTPTS,format=yuv420p[vout]`);
+  audioClips.forEach((clip,i)=>lines.push(audioFilterForClip(clip,pads.nextAudio(clip),`ac${i}`)));if(audioClips.length===1)lines.push(`[ac0]atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS[aout]`);else if(audioClips.length>1){const inputs=audioClips.map((_,i)=>`[ac${i}]`).join('');lines.push(`${inputs}amix=inputs=${audioClips.length}:normalize=0:dropout_transition=0,atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS[aout]`);}return{graph:lines.join(';\n'),hasAudio:audioClips.length>0};
+}
 async function availableEncoders(){try{const result=await runProcess('ffmpeg',['-hide_banner','-encoders']);return`${result.stdout}\n${result.stderr}`;}catch(_){return'';}}
 async function selectVideoEncoder(){const forced=process.env.DIRECTORCUT_VIDEO_ENCODER;if(forced)return{name:forced,args:['-c:v',forced]};const text=await availableEncoders(),candidates=process.platform==='darwin'?[['h264_videotoolbox',['-c:v','h264_videotoolbox','-b:v','10M']]]:process.platform==='win32'?[['h264_nvenc',['-c:v','h264_nvenc','-preset','p4','-cq','20']],['h264_qsv',['-c:v','h264_qsv','-global_quality','20']],['h264_amf',['-c:v','h264_amf','-quality','balanced','-b:v','10M']]]:[['h264_nvenc',['-c:v','h264_nvenc','-preset','p4','-cq','20']],['h264_qsv',['-c:v','h264_qsv','-global_quality','20']]];for(const[name,args]of candidates)if(new RegExp(`\\b${name}\\b`).test(text))return{name,args};return{name:'libx264',args:['-c:v','libx264','-preset','veryfast','-crf','18']};}
 function filterGraphOptionUnsupported(error, option){const text=String(error?.message||error||'').toLowerCase();const needle=option.toLowerCase().replace(/^-/, '');return(text.includes('unrecognized option')||text.includes('option not found')||text.includes('error splitting the argument list'))&&(text.includes(needle)||text.includes('filter_complex'));}
@@ -122,25 +140,10 @@ async function renderTimelineProject({project,outputPath}){
     let lastError=null;
     for(const filterOption of filterOptions){
       const hwArgs=makeRenderArgs(plan,graphFile,hasAudio,filterOption,encoder.args,outputPath);
-      try{
-        await runProcess('ffmpeg',hwArgs);
-        return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,encoder:encoder.name,filterOption};
-      }catch(error){
-        lastError=error;
-        if(filterGraphOptionUnsupported(error,filterOption))continue;
-        if(encoder.name==='libx264')throw error;
-        const swArgs=makeRenderArgs(plan,graphFile,hasAudio,filterOption,software,outputPath);
-        try{
-          await runProcess('ffmpeg',swArgs);
-          return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,encoder:'libx264',hardwareFallback:true,filterOption};
-        }catch(swError){
-          lastError=swError;
-          if(filterGraphOptionUnsupported(swError,filterOption))continue;
-          throw swError;
-        }
-      }
+      try{await runProcess('ffmpeg',hwArgs);return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,transitions:plan.transitions.length,encoder:encoder.name,filterOption};}
+      catch(error){lastError=error;if(filterGraphOptionUnsupported(error,filterOption))continue;if(encoder.name==='libx264')throw error;const swArgs=makeRenderArgs(plan,graphFile,hasAudio,filterOption,software,outputPath);try{await runProcess('ffmpeg',swArgs);return{outputPath,duration:plan.duration,width:plan.width,height:plan.height,videoClips:plan.videoClips.length,audioClips:plan.audioClips.length,transitions:plan.transitions.length,encoder:'libx264',hardwareFallback:true,filterOption};}catch(swError){lastError=swError;if(filterGraphOptionUnsupported(swError,filterOption))continue;throw swError;}}
     }
     throw lastError||new Error('FFmpeg does not support a compatible filter graph file option.');
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
 }
-module.exports={timelineDuration,normalizedKeyframes,staticProperty,playbackRate,piecewiseExpression,atempoChain,effectFiltersForClip,buildRenderPlan,buildFilterGraph,selectVideoEncoder,renderTimelineProject};
+module.exports={timelineDuration,normalizedKeyframes,staticProperty,playbackRate,piecewiseExpression,atempoChain,annotateTransitions,effectFiltersForClip,transitionVideoFilters,buildRenderPlan,buildFilterGraph,selectVideoEncoder,renderTimelineProject};
