@@ -15,7 +15,13 @@ const embedded=SR.mergeEmbeddings(base,[[1,0,0],[0,1,0],[0,0,1]],'nomic-embed-te
 assert.equal(SR.embeddingCoverage(embedded).percent,100);
 assert.equal(embedded.embeddingModel,'nomic-embed-text:latest');
 
-const media=[{libraryId:'m1',name:'Footage',visualIntelligence:embedded}];
+const persisted=VI.normalizeIndex(JSON.parse(JSON.stringify(embedded)));
+assert.equal(persisted.embeddingModel,'nomic-embed-text:latest','embedding model must survive project normalize/save/load');
+assert(persisted.embeddingUpdatedAt,'embedding timestamp must survive project normalize/save/load');
+assert.deepEqual(persisted.entries[1].embedding,[0,1,0]);
+assert.equal(SR.embeddingCoverage(persisted).percent,100);
+
+const media=[{libraryId:'m1',name:'Footage',visualIntelligence:persisted}];
 let results=SR.searchAcrossMedia(media,'cooking food',{queryEmbeddings:{'nomic-embed-text:latest':[0,.99,.01]}});
 assert.equal(results[0].entry.id,'b');
 assert.equal(results[0].semantic,true);
@@ -30,4 +36,4 @@ assert(results[0].score>4.9);
 const lexical=SR.searchAcrossMedia(media,'knife bowl');
 assert.equal(lexical[0].entry.id,'b');
 assert.equal(lexical[0].semantic,false);
-console.log('semantic retrieval model selection and vector search tests passed');
+console.log('semantic retrieval model selection, persistence and vector search tests passed');
