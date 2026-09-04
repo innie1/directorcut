@@ -34,21 +34,23 @@ jobs:
           const project = { media:{width:320,height:240,frameRate:24}, timeline:{ fps:24, tracks:[
             {id:'C1',kind:'caption',clips:[{id:'caption-1',name:'Native caption',start:.08,duration:.45,text:{content:'Native caption',style:{fontFamily:'Sans',fontSize:28},position:{x:.5,y:.82}}}]},
             {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{x:[{time:0,value:0},{time:.32,value:12}],scale:[{time:0,value:1},{time:.32,value:.9}],opacity:[{time:0,value:1},{time:.32,value:.8}],rotation:[{time:0,value:0},{time:.32,value:5}],speed:[{time:0,value:1.25}]},effects:[
-              {id:'color',type:'color',enabled:true,params:{exposure:.5,contrast:1.1,saturation:1.2,temperature:15,tint:-8}},
+              {id:'color',type:'color',enabled:true,params:{exposure:.5,contrast:1.1,saturation:1.2,temperature:15,tint:-8,highlights:20,shadows:-15}},
               {id:'blur',type:'blur',enabled:true,params:{radius:2}},
               {id:'sharpen',type:'sharpen',enabled:true,params:{amount:.3}},
-              {id:'vignette',type:'vignette',enabled:true,params:{amount:.2}}
+              {id:'vignette',type:'vignette',enabled:true,params:{amount:.2}},
+              {id:'motion-blur',type:'motionBlur',enabled:true,params:{amount:.25}}
             ]}]},
             {id:'A1',kind:'audio',clips:[{id:'a1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{volume:[{time:0,value:1},{time:.32,value:.7}],speed:[{time:0,value:1.25}]}}]}
           ]}};
           const manifest=buildTimelineManifest(project);
-          if(manifest.titleClips!==1) throw new Error('caption was not serialized into V5 manifest');
+          if(!manifest.text.startsWith('DIRECTORCUT_TIMELINE_V6\n')) throw new Error('native manifest is not V6');
+          if(manifest.titleClips!==1) throw new Error('caption was not serialized into V6 manifest');
           fs.writeFileSync('/tmp/directorcut-monitor.timeline', manifest.text);
           NODE
-          printf 'DURATION\nSEEK\t100000000\nSET\tv1\topacity\t0.6\nSET\tv1\tx\t18\nSET\tv1\tscale\t0.85\nSET\tv1\trotation\t7\nSET\ta1\tvolume\t0.5\nSET\tv1\teffect.color.exposure\t0.8\nSET\tv1\teffect.color.contrast\t1.2\nSET\tv1\teffect.color.saturation\t1.3\nSET\tv1\teffect.color.temperature\t25\nSET\tv1\teffect.color.tint\t-12\nSET\tv1\teffect.blur.radius\t3\nPLAY\nPAUSE\nQUIT\n' | build/directorcut_program_monitor --headless --manifest /tmp/directorcut-monitor.timeline 2>&1 | tee /tmp/directorcut-monitor.out
+          printf 'DURATION\nSEEK\t100000000\nSET\tv1\topacity\t0.6\nSET\tv1\tx\t18\nSET\tv1\tscale\t0.85\nSET\tv1\trotation\t7\nSET\ta1\tvolume\t0.5\nSET\tv1\teffect.color.exposure\t0.8\nSET\tv1\teffect.color.contrast\t1.2\nSET\tv1\teffect.color.saturation\t1.3\nSET\tv1\teffect.color.temperature\t25\nSET\tv1\teffect.color.tint\t-12\nSET\tv1\teffect.color.highlights\t35\nSET\tv1\teffect.color.shadows\t-22\nSET\tv1\teffect.blur.radius\t3\nPLAY\nPAUSE\nQUIT\n' | build/directorcut_program_monitor --headless --manifest /tmp/directorcut-monitor.timeline 2>&1 | tee /tmp/directorcut-monitor.out
           grep -q '^READY' /tmp/directorcut-monitor.out
           grep -q $'^OK\tSEEK' /tmp/directorcut-monitor.out
-          test "$(grep -c $'^OK\tSET' /tmp/directorcut-monitor.out)" -eq 11
+          test "$(grep -c $'^OK\tSET' /tmp/directorcut-monitor.out)" -eq 13
           grep -q $'^OK\tPLAY' /tmp/directorcut-monitor.out
           grep -q $'^OK\tPAUSE' /tmp/directorcut-monitor.out
           ! grep -qi 'rate.*not writable' /tmp/directorcut-monitor.out
@@ -56,7 +58,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Syntax desktop host and Program Monitor bridge
         run: node --check desktop/main-v04.js && node --check desktop/main.js && node --check desktop/preload.js && node --check desktop/home-history.js && node --check desktop/native-program-monitor.js && node --check desktop/native-monitor-ipc.js && node --check desktop/timeline-manifest.js
-      - name: Syntax media local AI and Stage 4 renderer
+      - name: Syntax media local AI and Stage 5 renderer
         run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/timeline-renderer-stage4.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
       - name: Syntax timeline Inspector and caption UI
         run: node --check prototype/timeline-engine.js && node --check prototype/caption-editor-utils.js && node --check prototype/caption-utils.js && node --check prototype/caption-inspector.js && node --check prototype/selection-actions.js && node --check prototype/preview-gap-utils.js && node --check prototype/media-library-utils.js && node --check prototype/media-library-runtime.js && node --check prototype/edit-undo-utils.js && node --check prototype/professional-timeline-utils.js && node --check prototype/professional-timeline-runtime.js && node --check prototype/professional-inspector-utils.js && node --check prototype/audio-post-utils.js && node --check prototype/advanced-inspector-utils.js && node --check prototype/effects-color-utils.js && node --check prototype/transitions-utils.js && node --check prototype/professional-inspector.js && node --check prototype/advanced-inspector.js && node --check prototype/native-inspector-live.js && node --check prototype/effects-color-runtime.js && node --check prototype/transitions-runtime.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
@@ -86,14 +88,16 @@ jobs:
         run: node desktop/tests/advanced-inspector-utils.test.js
       - name: Test professional audio processing
         run: node desktop/tests/audio-post-utils.test.js
-      - name: Test color and effects model
+      - name: Test Stage 5 color and effects model
         run: node desktop/tests/effects-color-utils.test.js
       - name: Test transitions and extensible clip data
         run: node desktop/tests/transitions-utils.test.js
-      - name: Test native timeline V5 caption/graphic manifest
+      - name: Test native timeline V6 caption graphic and Stage 5 manifest
         run: node desktop/tests/timeline-manifest.test.js
       - name: Render real Stage 3 multitrack and transition smoke test
         run: node desktop/tests/timeline-renderer.test.js
+      - name: Render real Stage 5 highlights LUT and motion blur smoke test
+        run: node desktop/tests/effects-renderer-stage5.test.js
       - name: Render real Stage 4 caption burn-in smoke test
         run: node desktop/tests/caption-renderer-stage4.test.js
       - name: Check local transcription adapter
