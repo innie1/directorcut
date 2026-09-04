@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: directorcut-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   native-core:
     runs-on: ubuntu-latest
