@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('directorcut', {
   pickLut: () => ipcRenderer.invoke('lut:pick'),
   analyzeMedia: payload => ipcRenderer.invoke('media:analyze', payload),
   analyzeVisualMedia: payload => ipcRenderer.invoke('media:visual-analyze', payload),
+  embedVisualIndex: payload => ipcRenderer.invoke('visual:embed-index', payload),
+  embedVisualQuery: payload => ipcRenderer.invoke('visual:embed-query', payload),
   recordingStart: meta => ipcRenderer.invoke('recording:start', meta),
   recordingAppend: (recordingId, data) => ipcRenderer.invoke('recording:append', { recordingId, data }),
   recordingFinish: recordingId => ipcRenderer.invoke('recording:finish', recordingId),
