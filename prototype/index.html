@@ -6,6 +6,7 @@
   <title>DirectorCut</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="stage5.css">
+  <link rel="stylesheet" href="workspace-v2.css">
 </head>
 <body>
 <header class="appHeader">
@@ -121,8 +122,8 @@
       <button data-policy="Co-edit" title="Propose timeline changes for approval">Co-edit</button>
       <button data-policy="Auto" title="Apply reversible timeline changes automatically">Auto</button>
     </div>
-    <div class="policyHelp" id="policyHelp">Ask: talk, analyze and suggest. Nothing changes until you edit it yourself.</div>
-    <div id="activity" class="activity"><div class="message ai">Import footage when you are ready, or ask me anything about the video you want to make.</div></div>
+    <div class="policyHelp" id="policyHelp">Talk and suggest only. No automatic changes.</div>
+    <div id="activity" class="activity"><div class="message ai">Ask me about this edit, or switch to Co-edit when you want me to propose timeline changes.</div></div>
     <div class="proposal" id="proposal" hidden><b>Proposed timeline change</b><span id="proposalText"></span><small id="proposalOps"></small><div><button id="reject">Reject</button><button id="approve" class="primary">Apply</button></div></div>
     <details class="selectionCard"><summary><small>SELECTED CLIP</small><b id="selectedClip">None</b></summary><span id="selectedClipMeta">Select a timeline clip to inspect it.</span></details>
   </aside>
@@ -136,7 +137,7 @@
 
 <div class="floatingComposer" id="floatingComposer">
   <div id="attachmentChips" class="attachmentChips"></div>
-  <div class="composerRow"><button id="attach" class="plusButton" title="Attach files, documents, images, audio or video">＋</button><textarea id="prompt" placeholder="Ask anything or tell Director what to change…"></textarea><button id="send" class="sendButton" title="Send">↑</button></div>
+  <div class="composerRow"><button id="attach" class="plusButton" title="Attach files, documents, images, audio or video">＋</button><textarea id="prompt" placeholder="Ask Director anything…"></textarea><button id="send" class="sendButton" title="Send">↑</button></div>
   <div class="composerFooter"><span id="composerMode">Ask · conversation only</span><span id="autosaveState">Autosave ready</span></div>
 </div>
 
