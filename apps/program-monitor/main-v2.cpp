@@ -5,6 +5,7 @@
 #include "inspector_ges.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -36,6 +37,12 @@ struct ManifestSpec {
     guint canvas_height = 0;
 };
 
+struct PreviewSignals {
+    std::uint64_t window_handle = 0;
+    std::atomic<bool> overlay_ready{false};
+    std::atomic<bool> frame_ready{false};
+};
+
 std::string percent_decode(const std::string& input) {
     std::string out;
     out.reserve(input.size());
@@ -60,7 +67,6 @@ std::string percent_decode(const std::string& input) {
     return out;
 }
 
-// Adapter for the shared Inspector parser. The decoded value is copied by parse_points.
 const std::string& percent_decode_ref(const std::string& input) {
     static thread_local std::string decoded;
     decoded = percent_decode(input);
@@ -72,8 +78,6 @@ std::vector<std::string> split_tabs(const std::string& line) {
     std::stringstream stream(line);
     std::string part;
     while (std::getline(stream, part, '\t')) fields.push_back(part);
-    // std::getline omits trailing empty fields, but V2/V3 clip records intentionally
-    // contain empty Inspector columns. Restore them from trailing tabs.
     std::size_t trailing = 0;
     for (auto it = line.rbegin(); it != line.rend() && *it == '\t'; ++it) ++trailing;
     while (trailing-- > 0) fields.emplace_back();
@@ -154,12 +158,20 @@ bool parse_manifest(const std::string& file, ManifestSpec& manifest, std::string
 
 GstBusSyncReply bus_sync_handler(GstBus*, GstMessage* message, gpointer user_data) {
     if (!gst_is_video_overlay_prepare_window_handle_message(message)) return GST_BUS_PASS;
-    const auto handle = static_cast<guintptr>(*static_cast<std::uint64_t*>(user_data));
-    if (handle == 0) return GST_BUS_PASS;
+    auto* signals = static_cast<PreviewSignals*>(user_data);
+    if (!signals || signals->window_handle == 0) return GST_BUS_PASS;
     auto* overlay = GST_VIDEO_OVERLAY(GST_MESSAGE_SRC(message));
-    gst_video_overlay_set_window_handle(overlay, handle);
+    gst_video_overlay_set_window_handle(overlay, static_cast<guintptr>(signals->window_handle));
     gst_video_overlay_handle_events(overlay, FALSE);
+    if (!signals->overlay_ready.exchange(true)) std::cout << "OVERLAY_READY" << std::endl;
     return GST_BUS_DROP;
+}
+
+GstPadProbeReturn first_video_buffer_probe(GstPad*, GstPadProbeInfo* info, gpointer user_data) {
+    if (!(GST_PAD_PROBE_INFO_TYPE(info) & (GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST))) return GST_PAD_PROBE_OK;
+    auto* signals = static_cast<PreviewSignals*>(user_data);
+    if (signals && !signals->frame_ready.exchange(true)) std::cout << "VIDEO_FRAME" << std::endl;
+    return GST_PAD_PROBE_REMOVE;
 }
 
 class TimelinePlayer {
@@ -169,6 +181,9 @@ public:
     bool load(const std::string& manifest_file, std::uint64_t window_handle, bool headless, std::string& error) {
         reset();
         window_handle_ = window_handle;
+        signals_.window_handle = window_handle;
+        signals_.overlay_ready.store(headless);
+        signals_.frame_ready.store(false);
 
         ManifestSpec manifest;
         if (!parse_manifest(manifest_file, manifest, error)) return false;
@@ -247,11 +262,6 @@ public:
             audio_sink = gst_element_factory_make("fakesink", "directorcut-audio-sink");
         } else {
 #ifdef _WIN32
-            // The native monitor runs in a helper process while the target HWND is
-            // owned by Electron. d3d11videosink subclasses an external HWND on
-            // Windows, which is not reliable across process boundaries and can
-            // prevent the GES pipeline from prerolling. glimagesink implements
-            // GstVideoOverlay without that D3D11 subclass path, so prefer it.
             video_sink = gst_element_factory_make("glimagesink", "directorcut-video-sink");
             video_sink_name = video_sink ? "glimagesink" : nullptr;
             if (!video_sink) {
@@ -274,6 +284,15 @@ public:
         }
         if (video_sink_name) std::cerr << "INFO\tVIDEO_SINK\t" << video_sink_name << std::endl;
         if (video_sink) {
+            if (!headless) {
+                GstPad* sink_pad = gst_element_get_static_pad(video_sink, "sink");
+                if (sink_pad) {
+                    gst_pad_add_probe(sink_pad,
+                        static_cast<GstPadProbeType>(GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST),
+                        first_video_buffer_probe, &signals_, nullptr);
+                    gst_object_unref(sink_pad);
+                }
+            }
             g_object_ref_sink(video_sink);
             ges_pipeline_preview_set_video_sink(pipeline_, video_sink);
             g_object_unref(video_sink);
@@ -300,7 +319,7 @@ public:
             error = "GES preview pipeline did not expose a GstBus";
             return false;
         }
-        if (!headless) gst_bus_set_sync_handler(bus, bus_sync_handler, &window_handle_, nullptr);
+        if (!headless) gst_bus_set_sync_handler(bus, bus_sync_handler, &signals_, nullptr);
         gst_object_unref(bus);
 
         const GstStateChangeReturn state = gst_element_set_state(GST_ELEMENT(pipeline_), GST_STATE_PAUSED);
@@ -355,11 +374,14 @@ private:
             g_object_unref(timeline_);
             timeline_ = nullptr;
         }
+        signals_.overlay_ready.store(false);
+        signals_.frame_ready.store(false);
     }
 
     GESPipeline* pipeline_ = nullptr;
     GESTimeline* timeline_ = nullptr;
     std::uint64_t window_handle_ = 0;
+    PreviewSignals signals_;
     std::unordered_map<std::string, InspectorRuntime> inspector_;
 };
 
