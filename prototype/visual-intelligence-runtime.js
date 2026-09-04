@@ -2,7 +2,8 @@
 // descriptions and retrieve shots lexically or with local semantic embeddings.
 (() => {
   if (window.DirectorCutVisualIntelligenceRuntime) return;
-  const VI=window.DirectorVisualIntelligence,SR=window.DirectorSemanticRetrieval,bin=document.querySelector('#mediaBin'),video=document.querySelector('#video');
+  const VI=window.DirectorVisualIntelligence,bin=document.querySelector('#mediaBin'),video=document.querySelector('#video');
+  let SR=window.DirectorSemanticRetrieval,semanticLoader=null;
   if(!VI||!bin)return;
   const section=bin.closest('.librarySection');
   const running=new Set(),embeddingJobs=new Map();
@@ -15,6 +16,18 @@
   section?.insertBefore(searchBox,bin);
   const input=searchBox.querySelector('input'),resultsRoot=searchBox.querySelector('.visualSearchResults'),modeRoot=searchBox.querySelector('.visualSearchMode');
 
+  async function loadSemanticApi(){
+    if(SR)return SR;
+    if(semanticLoader)return semanticLoader;
+    semanticLoader=new Promise(resolve=>{
+      const existing=document.querySelector('script[data-runtime="semantic-retrieval-utils.js"],script[src$="semantic-retrieval-utils.js"]');
+      const done=()=>{SR=window.DirectorSemanticRetrieval||null;resolve(SR);};
+      if(existing){if(window.DirectorSemanticRetrieval)return done();existing.addEventListener('load',done,{once:true});existing.addEventListener('error',()=>resolve(null),{once:true});return;}
+      const script=document.createElement('script');script.src='semantic-retrieval-utils.js';script.dataset.runtime='semantic-retrieval-utils.js';script.onload=done;script.onerror=()=>resolve(null);document.body.appendChild(script);
+    });
+    return semanticLoader;
+  }
+
   const findMedia=id=>(state?.mediaLibrary||[]).find(media=>media.libraryId===id)||null;
   const embeddingCoverage=media=>SR?.embeddingCoverage?.(media?.visualIntelligence||{})||{entries:media?.visualIntelligence?.entries?.length||0,embedded:0,percent:0,model:''};
   const summaryText=media=>{
@@ -25,9 +38,11 @@
   function setSearchMode(text,kind=''){if(!modeRoot)return;modeRoot.textContent=text;modeRoot.dataset.kind=kind;}
 
   async function resolveEmbeddingModel(force=false){
-    if(!SR||typeof window.directorcut?.localAIStatus!=='function'||typeof window.directorcut?.embedVisualIndex!=='function'){
+    const semantic=await loadSemanticApi();
+    if(!semantic||typeof window.directorcut?.localAIStatus!=='function'||typeof window.directorcut?.embedVisualIndex!=='function'){
       setSearchMode('Visual search · lexical fallback','lexical');return null;
     }
+    SR=semantic;
     if(force){embeddingProbe=null;embeddingModel=null;embeddingError='';}
     if(embeddingProbe)return embeddingProbe;
     embeddingProbe=(async()=>{
@@ -53,7 +68,8 @@
   }
 
   async function ensureSemanticIndex(media,{notify=false}={}){
-    if(!media?.visualIntelligence?.entries?.length||!SR)return null;
+    if(!media?.visualIntelligence?.entries?.length)return null;
+    const semantic=await loadSemanticApi();if(!semantic)return null;SR=semantic;
     const model=await resolveEmbeddingModel();if(!model)return null;
     const coverage=embeddingCoverage(media);
     if(coverage.percent===100&&coverage.model===model)return model;
@@ -127,7 +143,9 @@
   }
 
   async function semanticResults(query){
-    if(!SR||typeof window.directorcut?.embedVisualQuery!=='function')return{results:lexicalResults(query),semantic:false};
+    const semanticApi=await loadSemanticApi();
+    if(!semanticApi||typeof window.directorcut?.embedVisualQuery!=='function')return{results:lexicalResults(query),semantic:false};
+    SR=semanticApi;
     await upgradeLegacyVisualIndexes();
     const models=[...new Set((state?.mediaLibrary||[]).map(media=>embeddingCoverage(media).model).filter(Boolean))];
     if(!models.length)return{results:lexicalResults(query),semantic:false};
@@ -156,7 +174,7 @@
       row.innerHTML='<span class="visualResultTime"></span><div><b></b><small></small></div><i>↗</i>';
       row.querySelector('.visualResultTime').textContent=label;
       row.querySelector('b').textContent=result.entry.summary||result.entry.objects?.join(', ')||'Visual match';
-      const evidence=[...result.entry.objects||[],...result.entry.visibleText||[]].slice(0,4).join(' · ');
+      const evidence=[...(result.entry.objects||[]),...(result.entry.visibleText||[])].slice(0,4).join(' · ');
       row.querySelector('small').textContent=`${result.media.name||'Media'} · ${method}${result.semanticScore?` ${(result.semanticScore*100).toFixed(0)}%`:''}${evidence?` · ${evidence}`:''}`;
       row.onclick=()=>jumpTo(result.media,time);
       resultsRoot.appendChild(row);
@@ -169,7 +187,7 @@
     const revision=++searchRevision,query=input.value.trim();resultsRoot.innerHTML='';
     if(!query){resultsRoot.hidden=true;return;}
     const initial=lexicalResults(query);renderRows(initial,{semantic:false});
-    setSearchMode(embeddingModel?`Visual search · semantic search preparing…`:'Visual search · checking semantic retrieval…','busy');
+    setSearchMode(embeddingModel?'Visual search · semantic search preparing…':'Visual search · checking semantic retrieval…','busy');
     const resolved=await semanticResults(query);
     if(revision!==searchRevision||query!==input.value.trim())return;
     renderRows(resolved.results,{semantic:resolved.semantic});
@@ -197,5 +215,5 @@
   searchBox.querySelector('button').onclick=()=>{searchRevision++;clearTimeout(searchTimer);input.value='';resultsRoot.innerHTML='';resultsRoot.hidden=true;input.focus();};
   new MutationObserver(decorateCards).observe(bin,{childList:true,subtree:true});
   decorateCards();resolveEmbeddingModel();
-  window.DirectorCutVisualIntelligenceRuntime={runVisual,renderSearch,jumpTo,directorContext,decorateCards,resolveEmbeddingModel,ensureSemanticIndex,semanticResults,lexicalResults};
+  window.DirectorCutVisualIntelligenceRuntime={runVisual,renderSearch,jumpTo,directorContext,decorateCards,resolveEmbeddingModel,ensureSemanticIndex,semanticResults,lexicalResults,loadSemanticApi};
 })();
