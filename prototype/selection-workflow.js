@@ -1,4 +1,4 @@
-// Simple selected-clip workflow: CapCut-style contextual actions and Delete/Backspace behavior.
+// Selected-clip workflow: direct timeline actions with non-ripple delete by default.
 (() => {
   const TL = window.DirectorTimeline;
   const SA = window.DirectorSelectionActions;
@@ -7,6 +7,7 @@
   const video = document.querySelector('#video');
   const timelineTop = document.querySelector('.timelineTop > div');
   const isTyping = target => Boolean(target?.closest?.('input,textarea,select,[contenteditable="true"]'));
+  const notice = text => window.DirectorCutEditorToast?.(text);
 
   function selected() {
     return state.selectedClipId ? TL.findClip(state.timeline, state.selectedClipId) : null;
@@ -30,14 +31,16 @@
     bar.hidden = true;
     bar.innerHTML = [
       '<span class="clipQuickLabel">Selected</span>',
-      '<button type="button" data-quick="split" title="Split selected clip at the playhead (C)">✂ <span>Split</span></button>',
-      '<button type="button" data-quick="delete" class="quickDelete" title="Delete selected clip and close the gap (Delete / Backspace)">⌫ <span>Delete</span></button>',
+      '<button type="button" data-quick="split" title="Split selected clip at the playhead (C or Ctrl+B)">✂ <span>Split</span></button>',
+      '<button type="button" data-quick="delete" class="quickDelete" title="Delete selected clip and leave a gap (Delete / Backspace)">⌫ <span>Delete</span></button>',
+      '<button type="button" data-quick="ripple" title="Delete selected clip and close the gap">⇤ <span>Ripple delete</span></button>',
       '<button type="button" data-quick="undo" title="Undo last edit (Ctrl+Z)">↶ <span>Undo</span></button>',
       '<small id="clipQuickHint"></small>'
     ].join('');
     timelineTop.appendChild(bar);
     bar.querySelector('[data-quick="split"]').onclick = splitSelected;
-    bar.querySelector('[data-quick="delete"]').onclick = () => deleteSelected(true);
+    bar.querySelector('[data-quick="delete"]').onclick = () => deleteSelected(false);
+    bar.querySelector('[data-quick="ripple"]').onclick = () => deleteSelected(true);
     bar.querySelector('[data-quick="undo"]').onclick = () => document.querySelector('#undoEdit')?.click();
     return bar;
   }
@@ -59,25 +62,30 @@
     if (!found) return;
     const locked = Boolean(found.track.locked);
     bar.classList.toggle('locked', locked);
-    const del = bar.querySelector('[data-quick="delete"]');
-    const split = bar.querySelector('[data-quick="split"]');
-    if (del) del.disabled = locked;
-    if (split) split.disabled = locked;
+    for (const action of ['delete','ripple','split']) {
+      const button = bar.querySelector(`[data-quick="${action}"]`);
+      if (button) button.disabled = locked;
+    }
     const label = bar.querySelector('.clipQuickLabel');
     if (label) label.textContent = found.clip.name || 'Selected clip';
   }
 
-  function deleteSelected(ripple = true) {
+  function deleteSelected(ripple = false) {
     const found = selected();
     if (!found) return false;
     if (found.track.locked) { flashHint('Track is locked'); return false; }
     const clipId = found.clip.id;
+    const start = found.clip.start;
+    const end = TL.clipEnd(found.clip);
+    const videoSelection = found.track.kind === 'video';
     pushUndo();
     state.timeline = ripple ? SA.rippleDeleteSelectedClip(state.timeline, clipId) : SA.removeSelectedClip(state.timeline, clipId);
+    if (videoSelection) window.DirectorCutCaptions?.removeInRange?.(start, end, { ripple });
     state.selectedClipId = null;
-    learn('accepted', ripple ? 'manual delete selected clip' : 'manual lift selected clip', clipId);
+    learn('accepted', ripple ? 'manual ripple delete selected clip' : 'manual delete selected clip', clipId);
     markDirty();
     renderTimeline();
+    notice?.(ripple ? 'Ripple deleted clip' : 'Deleted clip · gap preserved');
     return true;
   }
 
@@ -101,6 +109,7 @@
     learn('accepted', 'manual split selected clip', `split at ${t.toFixed(6)}s`);
     markDirty();
     renderTimeline();
+    notice?.('Split clip');
     return true;
   }
 
@@ -111,17 +120,16 @@
     return result;
   };
 
-  // Window capture runs before the older document-level shortcut handlers.
+  // Window capture runs before older document-level shortcut handlers.
   window.addEventListener('keydown', event => {
     if (isTyping(event.target)) return;
     if ((event.key === 'Delete' || event.key === 'Backspace') && state.selectedClipId) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      deleteSelected(true);
+      deleteSelected(false);
     }
   }, true);
 
-  // Update the visible shortcut sheet to describe the simpler behavior.
   function patchShortcutSheet() {
     const sheet = document.querySelector('#shortcutSheet');
     if (!sheet) return;
@@ -129,14 +137,14 @@
     const deleteRow = rows.find(row => row.querySelector('kbd')?.textContent.trim() === 'Delete');
     if (deleteRow) {
       deleteRow.querySelector('kbd').textContent = 'Delete / Backspace';
-      deleteRow.querySelector('span').textContent = 'Delete selected clip';
+      deleteRow.querySelector('span').textContent = 'Delete selected clip · leave gap';
     }
     if (!sheet.querySelector('[data-range-delete-help]')) {
       const grid = sheet.querySelector('.shortcutGrid');
       const row = document.createElement('div');
       row.className = 'shortcutRow';
       row.dataset.rangeDeleteHelp = 'true';
-      row.innerHTML = '<kbd>I / O + Delete</kbd><span>Delete a marked In → Out range when no clip is selected</span>';
+      row.innerHTML = '<kbd>I / O + Delete</kbd><span>Delete a marked range and leave a gap when no clip is selected</span>';
       grid?.appendChild(row);
     }
   }
@@ -146,5 +154,6 @@
     if (event.key === '?' || (event.shiftKey && event.key === '/')) setTimeout(patchShortcutSheet, 0);
   }, true);
 
+  window.DirectorCutSelectionWorkflow = { deleteSelected, splitSelected, syncQuickActions };
   syncQuickActions();
 })();
