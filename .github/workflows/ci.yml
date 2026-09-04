@@ -49,15 +49,17 @@ jobs:
       - name: Syntax media and local AI
         run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
       - name: Syntax timeline engine and base UI
-        run: node --check prototype/timeline-engine.js && node --check prototype/selection-actions.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
+        run: node --check prototype/timeline-engine.js && node --check prototype/caption-utils.js && node --check prototype/selection-actions.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
       - name: Syntax advanced timeline and professional workflow
-        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/selection-workflow.js && node --check prototype/program-monitor.js
+        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/selection-workflow.js && node --check prototype/program-monitor.js && node --check prototype/capcut-workflow.js
       - name: Test media utilities
         run: node desktop/tests/media-utils.test.js
       - name: Test timeline engine
         run: node desktop/tests/timeline-engine.test.js
       - name: Test selected clip actions
         run: node desktop/tests/selection-actions.test.js
+      - name: Test caption timeline utilities
+        run: node desktop/tests/caption-utils.test.js
       - name: Test native timeline manifest
         run: node desktop/tests/timeline-manifest.test.js
       - name: Render real multitrack smoke test
