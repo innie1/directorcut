@@ -23,7 +23,7 @@ jobs:
         run: cmake --build build -j2
       - name: Verify native Program Monitor target
         run: test -x build/directorcut_program_monitor
-      - name: Headless GES timeline playback and Inspector smoke test
+      - name: Headless GES full-timeline playback and Inspector smoke test
         run: |
           set -o pipefail
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=320x240:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 1 -c:v libtheora -c:a libvorbis /tmp/directorcut-monitor.ogv
@@ -32,6 +32,7 @@ jobs:
           const { buildTimelineManifest } = require('./desktop/timeline-manifest');
           const source = '/tmp/directorcut-monitor.ogv';
           const project = { media:{width:320,height:240,frameRate:24}, timeline:{ fps:24, tracks:[
+            {id:'C1',kind:'caption',clips:[{id:'caption-1',name:'Native caption',start:.08,duration:.45,text:{content:'Native caption',style:{fontFamily:'Sans',fontSize:28},position:{x:.5,y:.82}}}]},
             {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{x:[{time:0,value:0},{time:.32,value:12}],scale:[{time:0,value:1},{time:.32,value:.9}],opacity:[{time:0,value:1},{time:.32,value:.8}],rotation:[{time:0,value:0},{time:.32,value:5}],speed:[{time:0,value:1.25}]},effects:[
               {id:'color',type:'color',enabled:true,params:{exposure:.5,contrast:1.1,saturation:1.2,temperature:15,tint:-8}},
               {id:'blur',type:'blur',enabled:true,params:{radius:2}},
@@ -40,7 +41,9 @@ jobs:
             ]}]},
             {id:'A1',kind:'audio',clips:[{id:'a1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{volume:[{time:0,value:1},{time:.32,value:.7}],speed:[{time:0,value:1.25}]}}]}
           ]}};
-          fs.writeFileSync('/tmp/directorcut-monitor.timeline', buildTimelineManifest(project).text);
+          const manifest=buildTimelineManifest(project);
+          if(manifest.titleClips!==1) throw new Error('caption was not serialized into V5 manifest');
+          fs.writeFileSync('/tmp/directorcut-monitor.timeline', manifest.text);
           NODE
           printf 'DURATION\nSEEK\t100000000\nSET\tv1\topacity\t0.6\nSET\tv1\tx\t18\nSET\tv1\tscale\t0.85\nSET\tv1\trotation\t7\nSET\ta1\tvolume\t0.5\nSET\tv1\teffect.color.exposure\t0.8\nSET\tv1\teffect.color.contrast\t1.2\nSET\tv1\teffect.color.saturation\t1.3\nSET\tv1\teffect.color.temperature\t25\nSET\tv1\teffect.color.tint\t-12\nSET\tv1\teffect.blur.radius\t3\nPLAY\nPAUSE\nQUIT\n' | build/directorcut_program_monitor --headless --manifest /tmp/directorcut-monitor.timeline 2>&1 | tee /tmp/directorcut-monitor.out
           grep -q '^READY' /tmp/directorcut-monitor.out
@@ -48,6 +51,7 @@ jobs:
           test "$(grep -c $'^OK\tSET' /tmp/directorcut-monitor.out)" -eq 11
           grep -q $'^OK\tPLAY' /tmp/directorcut-monitor.out
           grep -q $'^OK\tPAUSE' /tmp/directorcut-monitor.out
+          ! grep -qi 'rate.*not writable' /tmp/directorcut-monitor.out
       - name: Test native core and GStreamer backend
         run: ctest --test-dir build --output-on-failure
       - name: Syntax desktop host and Program Monitor bridge
@@ -80,7 +84,7 @@ jobs:
         run: node desktop/tests/effects-color-utils.test.js
       - name: Test transitions and extensible clip data
         run: node desktop/tests/transitions-utils.test.js
-      - name: Test native timeline manifest
+      - name: Test native timeline V5 caption/graphic manifest
         run: node desktop/tests/timeline-manifest.test.js
       - name: Render real multitrack and transition smoke test
         run: node desktop/tests/timeline-renderer.test.js
