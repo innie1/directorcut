@@ -1,0 +1,10 @@
+build/
+node_modules/
+*.db
+*.directorcut
+*.mp4
+__pycache__/
+*.pyc
+.DS_Store
+.env
+models/
