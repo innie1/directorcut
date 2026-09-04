@@ -10,6 +10,6 @@
     "test": "node tests/media-utils.test.js"
   },
   "devDependencies": {
-    "electron": "latest"
+    "electron": "44.2.0"
   }
 }
