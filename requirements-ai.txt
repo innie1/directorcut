@@ -1,0 +1,2 @@
+# Optional local AI dependency. No paid API is used.
+faster-whisper>=1.1.0
