@@ -66,4 +66,6 @@
   load('home-dashboard.js');
   const loadCaptionInspector=()=>load('caption-inspector.js');
   if(window.DirectorCaptionEditor)loadCaptionInspector();else load('caption-editor-utils.js',loadCaptionInspector);
+  const loadFootageRuntime=()=>load('footage-intelligence-runtime.js');
+  if(window.DirectorFootageIntelligence)loadFootageRuntime();else load('footage-intelligence-utils.js',loadFootageRuntime);
 })();
