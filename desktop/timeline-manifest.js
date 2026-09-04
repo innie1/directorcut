@@ -4,8 +4,9 @@ const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback
 const ns = seconds => Math.max(0, Math.round(n(seconds) * 1e9));
 const encodeField = value => encodeURIComponent(String(value ?? ''));
 
-function keyframeField(clip, property) {
-  const frames = Array.isArray(clip?.keyframes?.[property]) ? clip.keyframes[property] : [];
+function keyframeField(clip, property, fallback = null) {
+  let frames = Array.isArray(clip?.keyframes?.[property]) ? clip.keyframes[property] : [];
+  if (!frames.length && fallback !== null) frames = [{ time:0, value:fallback }];
   const normalized = frames
     .map(frame => ({ time:Math.max(0, n(frame?.time)), value:n(frame?.value) }))
     .filter(frame => Number.isFinite(frame.value))
@@ -31,8 +32,6 @@ function buildTimelineManifest(project = {}) {
     if (track.kind === 'audio' && track.muted) return;
     if (!['video', 'audio'].includes(track.kind)) return;
 
-    // GES layers are non-overlapping clip containers. Keep every DirectorCut media
-    // track on its own GES layer so linked V/A clips can occupy the same time range.
     const layer = mediaLayer++;
     for (const clip of track.clips || []) {
       const clipDuration = n(clip?.duration);
@@ -49,17 +48,15 @@ function buildTimelineManifest(project = {}) {
         encodeField(source),
         encodeField(clip.id || ''),
         encodeField(clip.name || path.basename(source)),
-        keyframeField(clip, 'x'),
-        keyframeField(clip, 'y'),
-        keyframeField(clip, 'scale'),
-        keyframeField(clip, 'rotation'),
-        keyframeField(clip, 'opacity'),
-        keyframeField(clip, 'speed'),
-        keyframeField(clip, 'volume')
+        keyframeField(clip, 'x', 0),
+        keyframeField(clip, 'y', 0),
+        keyframeField(clip, 'scale', 1),
+        keyframeField(clip, 'rotation', 0),
+        keyframeField(clip, 'opacity', 1),
+        keyframeField(clip, 'speed', 1),
+        keyframeField(clip, 'volume', 1)
       ].join('\t'));
       clips++;
-      // Native preview duration must reflect exactly what GES receives. Hidden
-      // video and muted audio therefore cannot create an invisible dead tail.
       duration = Math.max(duration, start + clipDuration);
     }
   });
