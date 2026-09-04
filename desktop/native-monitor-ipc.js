@@ -20,6 +20,31 @@ function attachNativeProgramMonitor({ ipcMain, app, root, window }) {
     ipcMain.handle('monitor:stop', async () => { if (!monitor) return true; await monitor.stop(); return true; });
   }
 
+  // BrowserWindow parenting keeps Z-order correct, but Windows can still require
+  // explicit repositioning when the owner window moves. Reapply the last renderer
+  // viewport rectangle whenever the desktop window geometry changes.
+  const reattach = () => {
+    if (monitor?.parent === window && monitor.lastBounds && !window.isDestroyed()) monitor.setBounds(monitor.lastBounds);
+  };
+  window.on('move', reattach);
+  window.on('resize', reattach);
+  window.on('restore', () => {
+    reattach();
+    if (monitor?.parent === window && monitor.ready && monitor.enabled) monitor.setVisible(true);
+  });
+  window.on('maximize', reattach);
+  window.on('unmaximize', reattach);
+  window.on('minimize', () => {
+    if (monitor?.parent === window) monitor.setVisible(false);
+  });
+  window.on('hide', () => {
+    if (monitor?.parent === window) monitor.setVisible(false);
+  });
+  window.on('show', () => {
+    reattach();
+    if (monitor?.parent === window && monitor.ready && monitor.enabled) monitor.setVisible(true);
+  });
+
   window.on('closed', () => {
     if (monitor?.parent === window) {
       monitor.destroy();
