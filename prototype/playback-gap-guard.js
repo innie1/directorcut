@@ -29,12 +29,17 @@
 
   function visibleClipAt(time) {
     const tracks = (state.timeline?.tracks || []).filter(track => track.kind === 'video' && !track.hidden);
-    // Highest video track wins when several overlap.
     for (const track of tracks) {
       const clip = (track.clips || []).find(clip => time >= Number(clip.start || 0) - 1e-4 && time < TL.clipEnd(clip) - 1e-4);
       if (clip) return { track, clip };
     }
     return null;
+  }
+
+  function restoreGapMute() {
+    if (!gapMuted) return;
+    video.muted = mutedBeforeGap;
+    gapMuted = false;
   }
 
   function enterGap() {
@@ -50,21 +55,26 @@
   }
 
   function leaveGap() {
-    if (gapMuted) {
-      video.muted = mutedBeforeGap;
-      gapMuted = false;
-    }
+    restoreGapMute();
     video.classList.remove('sourceTimelineHidden','timelineHardGap');
     video.style.visibility = 'visible';
     overlay.hidden = true;
     viewport.classList.remove('timelineGapActive');
   }
 
+  function yieldToNative() {
+    restoreGapMute();
+    video.classList.remove('sourceTimelineHidden','timelineHardGap');
+    // GES owns the monitor. Keep Chromium hidden exactly as program-monitor.js expects.
+    video.style.visibility = 'hidden';
+    overlay.hidden = true;
+    viewport.classList.remove('timelineGapActive');
+  }
+
   function sync() {
     const pm = window.DirectorCutProgramMonitor;
-    // Native GES is authoritative and already renders true timeline gaps.
     if (pm?.active) {
-      leaveGap();
+      yieldToNative();
       return;
     }
     const duration = Math.max(0, Number(TL.duration(state.timeline) || 0));
@@ -87,7 +97,6 @@
   document.addEventListener('pointerup', () => requestAnimationFrame(sync), true);
   document.addEventListener('keyup', () => requestAnimationFrame(sync), true);
 
-  // A timeline edit can remove the clip under the current playhead without causing a media event.
   if (typeof renderTimeline === 'function') {
     const baseRenderTimeline = renderTimeline;
     renderTimeline = function (...args) {
@@ -100,6 +109,6 @@
   raf = requestAnimationFrame(tick);
   window.addEventListener('beforeunload', () => {
     cancelAnimationFrame(raf);
-    if (gapMuted) video.muted = mutedBeforeGap;
+    restoreGapMute();
   });
 })();
