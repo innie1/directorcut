@@ -15,6 +15,7 @@ function attachNativeProgramMonitor({ ipcMain, app, root, window }) {
     ipcMain.handle('monitor:play', async () => monitor ? monitor.play() : false);
     ipcMain.handle('monitor:pause', async () => monitor ? monitor.pause() : false);
     ipcMain.handle('monitor:seek', async (_event, seconds) => monitor ? monitor.seek(seconds) : false);
+    ipcMain.handle('monitor:set-property', async (_event, payload) => monitor ? monitor.setProperty(payload?.clipId, payload?.property, payload?.value) : false);
     ipcMain.handle('monitor:position', async () => monitor ? monitor.position() : null);
     ipcMain.handle('monitor:visible', async (_event, visible) => monitor ? monitor.setVisible(visible) : false);
     ipcMain.handle('monitor:stop', async () => { if (!monitor) return true; await monitor.stop(); return true; });
