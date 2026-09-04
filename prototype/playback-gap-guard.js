@@ -1,9 +1,10 @@
 // Ensures the Chromium/source fallback obeys the edited timeline instead of leaking deleted footage.
 (() => {
   const TL = window.DirectorTimeline;
+  const Gap = window.DirectorPreviewGapUtils;
   const video = document.querySelector('#video');
   const viewport = document.querySelector('.videoViewport') || video?.parentElement;
-  if (!TL || !video || !viewport) return;
+  if (!TL || !Gap || !video || !viewport) return;
 
   let overlay = document.querySelector('#timelineGapOverlay');
   if (!overlay) {
@@ -26,15 +27,6 @@
     if (pm?.active && Number.isFinite(pm.position)) return Number(pm.position);
     return Number(video.currentTime || 0);
   };
-
-  function visibleClipAt(time) {
-    const tracks = (state.timeline?.tracks || []).filter(track => track.kind === 'video' && !track.hidden);
-    for (const track of tracks) {
-      const clip = (track.clips || []).find(clip => time >= Number(clip.start || 0) - 1e-4 && time < TL.clipEnd(clip) - 1e-4);
-      if (clip) return { track, clip };
-    }
-    return null;
-  }
 
   function restoreGapMute() {
     if (!gapMuted) return;
@@ -65,7 +57,6 @@
   function yieldToNative() {
     restoreGapMute();
     video.classList.remove('sourceTimelineHidden','timelineHardGap');
-    // GES owns the monitor. Keep Chromium hidden exactly as program-monitor.js expects.
     video.style.visibility = 'hidden';
     overlay.hidden = true;
     viewport.classList.remove('timelineGapActive');
@@ -82,8 +73,7 @@
       leaveGap();
       return;
     }
-    const t = position();
-    if (!visibleClipAt(t)) enterGap();
+    if (Gap.isTimelineGap(state.timeline, position())) enterGap();
     else leaveGap();
   }
 
