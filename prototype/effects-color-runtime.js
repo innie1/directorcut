@@ -9,7 +9,6 @@
   if(!FX||!TL||!video||!content||!monitor)return;
 
   const sessions=new WeakMap();
-  const clone=value=>JSON.parse(JSON.stringify(value));
   const notice=text=>window.DirectorCutEditorToast?.(text);
 
   const colorSection=document.createElement('section');
@@ -85,11 +84,18 @@
 
   function applyInput(input){
     const found=selectedVideo();
-    if(!found)return false;
+    if(!found)return null;
     const type=input.dataset.effectType,param=input.dataset.effectParam,key=`${type}.${param}`,convert=conversions[key];
-    if(!convert||input.value==='')return false;
-    state.timeline=FX.setEffectParam(state.timeline,found.clip.id,type,param,convert.fromField(input.value));
-    return true;
+    if(!convert||input.value==='')return null;
+    const value=convert.fromField(input.value);
+    state.timeline=FX.setEffectParam(state.timeline,found.clip.id,type,param,value);
+    return{clipId:found.clip.id,type,param,value};
+  }
+
+  function sendNativeEffect(change){
+    if(!change||!window.DirectorCutProgramMonitor?.active||!window.directorcut?.programMonitorSetProperty)return;
+    if(change.type!=='color'&&change.type!=='blur')return;
+    window.directorcut.programMonitorSetProperty(change.clipId,`effect.${change.type}.${change.param}`,change.value).catch(()=>false);
   }
 
   function commit(input){
@@ -124,8 +130,6 @@
   }
 
   function applyPreview(){
-    // Native GES receives its own effect graph in the native parity pass. Do not
-    // stack Chromium filters over the native child surface.
     if(window.DirectorCutProgramMonitor?.active){resetPreview();return;}
     const active=activeVideoClipAt(Number(video.currentTime||0));
     if(!active){resetPreview();return;}
@@ -150,7 +154,9 @@
   });
   content.addEventListener('input',event=>{
     const input=event.target.closest('input[data-effect-type][data-effect-param]');
-    if(input&&applyInput(input))applyPreview();
+    if(!input)return;
+    const change=applyInput(input);
+    if(change){sendNativeEffect(change);applyPreview();}
   });
   content.addEventListener('change',event=>{
     const input=event.target.closest('input[data-effect-type][data-effect-param]');
@@ -177,5 +183,5 @@
 
   sync();
   applyPreview();
-  window.DirectorCutEffectsColorRuntime={sync,applyPreview,resetPreview};
+  window.DirectorCutEffectsColorRuntime={sync,applyPreview,resetPreview,sendNativeEffect};
 })();
