@@ -16,14 +16,14 @@ jobs:
       - name: Install native, media, GStreamer and GES dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev ffmpeg pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libges-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          sudo apt-get install -y libsqlite3-dev ffmpeg pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libges-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
       - name: Configure
         run: cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF -DDIRECTORCUT_BUILD_GSTREAMER=ON
       - name: Build
         run: cmake --build build -j2
       - name: Verify native Program Monitor target
         run: test -x build/directorcut_program_monitor
-      - name: Headless GES timeline playback smoke test
+      - name: Headless GES timeline playback and Inspector smoke test
         run: |
           set -o pipefail
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=320x240:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 1 -c:v libtheora -c:a libvorbis /tmp/directorcut-monitor.ogv
@@ -31,15 +31,16 @@ jobs:
           const fs = require('fs');
           const { buildTimelineManifest } = require('./desktop/timeline-manifest');
           const source = '/tmp/directorcut-monitor.ogv';
-          const project = { timeline:{ fps:24, tracks:[
-            {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.8}]},
-            {id:'A1',kind:'audio',clips:[{id:'a1',sourcePath:source,start:0,sourceIn:0,duration:0.8}]}
+          const project = { media:{width:320,height:240,frameRate:24}, timeline:{ fps:24, tracks:[
+            {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.8,keyframes:{x:[{time:0,value:0},{time:.4,value:12}],scale:[{time:0,value:1},{time:.4,value:.9}],opacity:[{time:0,value:1},{time:.4,value:.8}],rotation:[{time:0,value:0},{time:.4,value:5}]}}]},
+            {id:'A1',kind:'audio',clips:[{id:'a1',sourcePath:source,start:0,sourceIn:0,duration:0.8,keyframes:{volume:[{time:0,value:1},{time:.4,value:.7}]}}]}
           ]}};
           fs.writeFileSync('/tmp/directorcut-monitor.timeline', buildTimelineManifest(project).text);
           NODE
-          printf 'DURATION\nSEEK\t100000000\nPLAY\nPAUSE\nQUIT\n' | build/directorcut_program_monitor --headless --manifest /tmp/directorcut-monitor.timeline 2>&1 | tee /tmp/directorcut-monitor.out
+          printf 'DURATION\nSEEK\t100000000\nSET\tv1\topacity\t0.6\nSET\tv1\tx\t18\nSET\tv1\tscale\t0.85\nSET\tv1\trotation\t7\nSET\ta1\tvolume\t0.5\nPLAY\nPAUSE\nQUIT\n' | build/directorcut_program_monitor --headless --manifest /tmp/directorcut-monitor.timeline 2>&1 | tee /tmp/directorcut-monitor.out
           grep -q '^READY' /tmp/directorcut-monitor.out
           grep -q $'^OK\tSEEK' /tmp/directorcut-monitor.out
+          test "$(grep -c $'^OK\tSET' /tmp/directorcut-monitor.out)" -eq 5
           grep -q $'^OK\tPLAY' /tmp/directorcut-monitor.out
           grep -q $'^OK\tPAUSE' /tmp/directorcut-monitor.out
       - name: Test native core and GStreamer backend
@@ -49,7 +50,7 @@ jobs:
       - name: Syntax media and local AI
         run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
       - name: Syntax timeline engine and base UI
-        run: node --check prototype/timeline-engine.js && node --check prototype/caption-utils.js && node --check prototype/selection-actions.js && node --check prototype/preview-gap-utils.js && node --check prototype/media-library-utils.js && node --check prototype/media-library-runtime.js && node --check prototype/edit-undo-utils.js && node --check prototype/professional-inspector-utils.js && node --check prototype/professional-inspector.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
+        run: node --check prototype/timeline-engine.js && node --check prototype/caption-utils.js && node --check prototype/selection-actions.js && node --check prototype/preview-gap-utils.js && node --check prototype/media-library-utils.js && node --check prototype/media-library-runtime.js && node --check prototype/edit-undo-utils.js && node --check prototype/professional-inspector-utils.js && node --check prototype/professional-inspector.js && node --check prototype/native-inspector-live.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
       - name: Syntax advanced timeline and professional workflow
         run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/selection-workflow.js && node --check prototype/program-monitor.js && node --check prototype/capcut-workflow.js && node --check prototype/playback-gap-guard.js && node --check prototype/composer-runtime.js && node --check prototype/edit-undo-runtime.js && node --check prototype/home-dashboard.js
       - name: Test media utilities
