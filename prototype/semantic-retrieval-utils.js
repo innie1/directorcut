@@ -7,15 +7,15 @@
   function modelName(model){return clean(model?.name||model?.model||model);}
   function embeddingRank(name=''){
     const value=clean(name).toLowerCase();
-    if(!value)return-1;
-    if(/nomic-embed-text/.test(value))return100;
-    if(/mxbai-embed-large/.test(value))return95;
-    if(/bge-m3|bge-large|bge-base/.test(value))return92;
-    if(/snowflake.*embed/.test(value))return90;
-    if(/all-minilm|minilm/.test(value))return88;
-    if(/embeddinggemma/.test(value))return87;
-    if(/embed|embedding|e5-/.test(value))return80;
-    return-1;
+    if(!value)return -1;
+    if(/nomic-embed-text/.test(value))return 100;
+    if(/mxbai-embed-large/.test(value))return 95;
+    if(/bge-m3|bge-large|bge-base/.test(value))return 92;
+    if(/snowflake.*embed/.test(value))return 90;
+    if(/all-minilm|minilm/.test(value))return 88;
+    if(/embeddinggemma/.test(value))return 87;
+    if(/embed|embedding|e5-/.test(value))return 80;
+    return -1;
   }
   function chooseEmbeddingModel(models=[],preferred=''){
     const list=(Array.isArray(models)?models:[]).map(item=>({item,name:modelName(item)})).filter(row=>row.name);
