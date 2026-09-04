@@ -1,10 +1,10 @@
 const assert = require('assert');
-const { buildTimelineManifest, ns, titleFields, visualLayerMap } = require('../timeline-manifest');
+const { buildTimelineManifest, ns, titleFields, visualLayerMap, argbWithOpacity } = require('../timeline-manifest');
 
 const project = {
   media:{ frameRate:24, width:1280, height:720 },
   timeline:{ fps:24, tracks:[
-    { id:'C1', kind:'caption', clips:[{ id:'c1', name:'Hello world', start:.25, duration:1.5, text:{content:'Hello world',style:{fontFamily:'Arial',fontSize:42,color:'#ffeecc'},position:{x:.5,y:.82}} }] },
+    { id:'C1', kind:'caption', clips:[{ id:'c1', name:'Hello world', start:.25, duration:1.5, text:{content:'Hello world',style:{fontFamily:'Arial',fontSize:42,color:'#ffeecc',backgroundColor:'#000000',backgroundOpacity:.5},position:{x:.5,y:.82}} }] },
     { id:'V2', kind:'graphic', clips:[{ id:'g1', name:'Graphic overlay', sourcePath:'./graphic.mp4', start:.5, sourceIn:0, duration:1 }] },
     { id:'V1', kind:'video', hidden:false, clips:[{ id:'v1', sourcePath:'./sample one.mp4', start:0, sourceIn:1.25, duration:2.5, keyframes:{
       x:[{time:0,value:12},{time:1,value:30}], scale:[{time:0,value:1.1}], rotation:[{time:0,value:5}], opacity:[{time:0,value:.8},{time:1,value:.5}], speed:[{time:0,value:1.25}]
@@ -26,7 +26,7 @@ const clipLines=result.text.split('\n').filter(line=>line.startsWith('clip\t')),
 const graphicLine=clipLines.find(line=>line.includes('graphic.mp4')),videoLine=clipLines.find(line=>line.includes('sample%20one.mp4')&&line.startsWith('clip\tvideo')),audioLine=clipLines.find(line=>line.startsWith('clip\taudio'));
 assert(graphicLine&&videoLine&&audioLine);assert(Number(titleLines[0].split('\t')[1])<Number(graphicLine.split('\t')[2]),'captions must be above graphics');assert(Number(graphicLine.split('\t')[2])<Number(videoLine.split('\t')[2]),'graphics must be above primary video');
 const videoFields=videoLine.split('\t'),audioFields=audioLine.split('\t');assert.equal(videoFields.length,24);assert(videoFields[9].includes(`${ns(0)}%3A12`)||decodeURIComponent(videoFields[9]).includes(`${ns(0)}:12`));assert.equal(decodeURIComponent(videoFields[11]),`${ns(0)}:1.1`);assert.equal(decodeURIComponent(videoFields[12]),`${ns(0)}:5`);assert.equal(decodeURIComponent(videoFields[14]),`${ns(0)}:1.25`);assert.equal(decodeURIComponent(audioFields[15]),`${ns(0)}:0.7`);assert.equal(Number(videoFields[16]),1.2);assert.equal(Number(videoFields[17]),1.1);assert.equal(Number(videoFields[18]),1.3);assert.equal(Number(videoFields[19]),20);assert.equal(Number(videoFields[20]),-10);assert.equal(Number(videoFields[21]),4);assert.equal(Number(videoFields[22]),.5);assert.equal(Number(videoFields[23]),.25);
-const tf=titleLines[0].split('\t');assert.equal(decodeURIComponent(tf[5]),'Hello world');assert(decodeURIComponent(tf[6]).includes('Arial'));assert.equal(Number(tf[9]),.5);assert.equal(Number(tf[10]),.82);
+const tf=titleLines[0].split('\t');assert.equal(decodeURIComponent(tf[5]),'Hello world');assert(decodeURIComponent(tf[6]).includes('Arial'));assert.equal(Number(tf[8]),0x80000000);assert.equal(Number(tf[9]),.5);assert.equal(Number(tf[10]),.82);assert.equal(argbWithOpacity('#112233',.25),0x40112233);
 assert.equal(titleFields({name:'Caption'},'caption').y,.86);const map=visualLayerMap(project.timeline);assert.equal(map.get('C1'),0);assert(map.get('V2')<map.get('V1'));
 
 const dissolve={media:{width:640,height:360,frameRate:30},timeline:{fps:30,transitions:[{id:'tr',trackId:'V1',fromClipId:'a',toClipId:'b',type:'dissolve',duration:.5}],tracks:[{id:'V1',kind:'video',clips:[{id:'a',sourcePath:'./a.mp4',start:0,duration:2},{id:'b',sourcePath:'./b.mp4',start:1.5,duration:2}]}]}};
