@@ -6,7 +6,7 @@ const FX = require('../prototype/effects-color-utils');
 const AP = require('../prototype/audio-post-utils');
 
 const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
-const even = v => Math.max(2, Math.round(n(v, 2) / 2) * 2;
+const even = v => Math.max(2, Math.round(n(v, 2) / 2) * 2);
 const clipEnd = c => n(c.start) + n(c.duration);
 const clamp = (v,a,b) => Math.max(a,Math.min(b,n(v,a)));
 
