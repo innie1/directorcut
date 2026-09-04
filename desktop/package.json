@@ -1,13 +1,13 @@
 {
   "name": "directorcut-desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Local-first DirectorCut desktop shell",
+  "description": "Local-first DirectorCut desktop editor",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node --check main.js && node --check preload.js && node --check media-utils.js && node --check ../prototype/app.js",
-    "test": "node tests/media-utils.test.js"
+    "check": "node --check main.js && node --check preload.js && node --check media-utils.js && node --check ollama-client.js && node --check gstreamer.js && node --check ../prototype/timeline-engine.js && node --check ../prototype/app.js",
+    "test": "node tests/media-utils.test.js && node tests/timeline-engine.test.js"
   },
   "devDependencies": {
     "electron": "44.2.0"
