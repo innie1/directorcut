@@ -32,8 +32,8 @@ jobs:
           const { buildTimelineManifest } = require('./desktop/timeline-manifest');
           const source = '/tmp/directorcut-monitor.ogv';
           const project = { media:{width:320,height:240,frameRate:24}, timeline:{ fps:24, tracks:[
-            {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.8,keyframes:{x:[{time:0,value:0},{time:.4,value:12}],scale:[{time:0,value:1},{time:.4,value:.9}],opacity:[{time:0,value:1},{time:.4,value:.8}],rotation:[{time:0,value:0},{time:.4,value:5}]}}]},
-            {id:'A1',kind:'audio',clips:[{id:'a1',sourcePath:source,start:0,sourceIn:0,duration:0.8,keyframes:{volume:[{time:0,value:1},{time:.4,value:.7}]}}]}
+            {id:'V1',kind:'video',clips:[{id:'v1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{x:[{time:0,value:0},{time:.32,value:12}],scale:[{time:0,value:1},{time:.32,value:.9}],opacity:[{time:0,value:1},{time:.32,value:.8}],rotation:[{time:0,value:0},{time:.32,value:5}],speed:[{time:0,value:1.25}]}}]},
+            {id:'A1',kind:'audio',clips:[{id:'a1',sourcePath:source,start:0,sourceIn:0,duration:0.64,keyframes:{volume:[{time:0,value:1},{time:.32,value:.7}],speed:[{time:0,value:1.25}]}}]}
           ]}};
           fs.writeFileSync('/tmp/directorcut-monitor.timeline', buildTimelineManifest(project).text);
           NODE
