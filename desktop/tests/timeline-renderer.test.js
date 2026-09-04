@@ -37,8 +37,8 @@ const { buildRenderPlan, buildFilterGraph, renderTimelineProject } = require('..
     assert.equal(plan.audioClips.length, 2);
     assert(Math.abs(plan.duration - 3) < .01);
     const graph = buildFilterGraph(plan).graph;
-    assert(graph.includes('split=2'));
-    assert(graph.includes('asplit=2'));
+    assert(graph.includes('split=2')); // source B is used by two video clips
+    assert(graph.includes('[0:a]anull') && graph.includes('[1:a]anull')); // audio clips come from distinct sources
     assert(graph.includes('zoompan'));
     assert(graph.includes('geq='));
     assert(graph.includes('amix=inputs=2'));
