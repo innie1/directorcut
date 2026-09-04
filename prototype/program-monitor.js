@@ -24,7 +24,9 @@
     reloadTimer:null,
     pollTimer:null,
     syncing:false,
-    generation:0
+    generation:0,
+    previousMuted:null,
+    missedPolls:0
   };
   window.DirectorCutProgramMonitor = pm;
 
@@ -39,6 +41,31 @@
 
   function setStatus(text) {
     if (gstStatus) gstStatus.textContent = text;
+  }
+
+  function useSourcePreview(reason = null) {
+    pm.active = false;
+    pm.missedPolls = 0;
+    if (reason) pm.reason = reason;
+    video.style.visibility = 'visible';
+    if (pm.previousMuted !== null) {
+      video.muted = pm.previousMuted;
+      pm.previousMuted = null;
+    }
+    setBadge('SOURCE', false);
+    if (reason) setStatus(`${reason} Using Chromium source preview.`);
+    window.directorcut.programMonitorVisible(false).catch(() => {});
+  }
+
+  function useNativePreview() {
+    if (pm.previousMuted === null) pm.previousMuted = Boolean(video.muted);
+    // HTML video remains a compatibility clock. GES owns the audible timeline.
+    video.muted = true;
+    video.style.visibility = 'hidden';
+    pm.active = true;
+    pm.missedPolls = 0;
+    setBadge('TIMELINE · GES', true);
+    setStatus('Native GStreamer/GES timeline preview active.');
   }
 
   async function syncBounds() {
@@ -65,8 +92,7 @@
     button.className = 'programPlayPause';
     button.textContent = '▶';
     button.title = 'Play · Space';
-    const time = document.querySelector('#time');
-    time?.insertAdjacentElement('afterend', button);
+    document.querySelector('#time')?.insertAdjacentElement('afterend', button);
     button.addEventListener('click', () => {
       if (pm.playing) video.pause();
       else video.play().catch(() => {});
@@ -86,32 +112,19 @@
       const result = await window.directorcut.programMonitorLoad(project, Math.min(seconds(position), duration));
       if (generation !== pm.generation) return false;
       if (!result?.ok) {
-        pm.active = false;
-        pm.reason = result?.reason || 'Native Program Monitor unavailable.';
-        setBadge('SOURCE', false);
-        setStatus(`${pm.reason} Using Chromium source preview.`);
-        video.style.visibility = 'visible';
+        useSourcePreview(result?.reason || 'Native Program Monitor unavailable.');
         return false;
       }
-      pm.active = true;
       pm.position = Math.min(seconds(position), duration);
       pm.duration = Number(result.duration || duration);
       pm.reason = null;
-      setBadge('TIMELINE · GES', true);
-      setStatus('Native GStreamer/GES timeline preview active.');
-      // The native child window paints over this viewport. Keep the HTML video alive
-      // invisibly so existing timeline controls continue to have a media clock.
-      video.style.visibility = 'hidden';
+      useNativePreview();
       await syncBounds();
       await window.directorcut.programMonitorVisible(true);
       if (pm.playing) await window.directorcut.programMonitorPlay();
       return true;
     } catch (error) {
-      pm.active = false;
-      pm.reason = error.message;
-      setBadge('SOURCE', false);
-      setStatus(`Native preview failed: ${error.message}`);
-      video.style.visibility = 'visible';
+      useSourcePreview(`Native preview failed: ${error.message}`);
       return false;
     } finally {
       pm.loading = false;
@@ -136,13 +149,11 @@
         setStatus('Native GES Program Monitor ready.');
         scheduleReload(100);
       } else {
-        setBadge('SOURCE', false);
-        setStatus(`${pm.reason || 'Native Program Monitor is not built.'} Source preview remains available.`);
+        useSourcePreview(pm.reason || 'Native Program Monitor is not built.');
       }
     } catch (error) {
       pm.available = false;
-      pm.reason = error.message;
-      setBadge('SOURCE', false);
+      useSourcePreview(error.message);
     }
   }
 
@@ -164,11 +175,22 @@
   });
 
   // GES is the playback authority when active. Poll its timeline position and use
-  // that to draw the playhead/timecode. The HTML video is only a compatibility clock.
+  // that to draw the playhead/timecode. If the helper disappears, fail back to the
+  // source preview instead of leaving a black/hidden monitor.
   pm.pollTimer = setInterval(async () => {
     if (!pm.active || pm.loading) return;
     const position = await window.directorcut.programMonitorPosition().catch(() => null);
-    if (!Number.isFinite(position)) return;
+    if (!Number.isFinite(position)) {
+      pm.missedPolls++;
+      if (pm.missedPolls >= 8) {
+        const wasPlaying = pm.playing;
+        useSourcePreview('Native timeline preview stopped unexpectedly.');
+        window.directorcut.programMonitorStop().catch(() => {});
+        if (wasPlaying && video.paused) video.play().catch(() => {});
+      }
+      return;
+    }
+    pm.missedPolls = 0;
     pm.position = Math.min(seconds(position), timelineDuration() || seconds(position));
     if (timeLabel && typeof tc === 'function') timeLabel.textContent = tc(pm.position);
     const sourceDuration = Number(video.duration || 0);
@@ -211,6 +233,7 @@
   window.addEventListener('beforeunload', () => {
     clearInterval(pm.pollTimer);
     clearTimeout(pm.reloadTimer);
+    if (pm.previousMuted !== null) video.muted = pm.previousMuted;
     window.directorcut.programMonitorStop().catch(() => {});
   });
 
