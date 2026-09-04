@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('directorcut', {
   askDirector: payload => ipcRenderer.invoke('director:ask', payload),
 
   homeRecent: () => ipcRenderer.invoke('home:recent'),
+  homeChooseProject: () => ipcRenderer.invoke('home:choose-project'),
   homeOpenProject: filePath => ipcRenderer.invoke('home:open-project', filePath),
   homeOpenExport: filePath => ipcRenderer.invoke('home:open-export', filePath),
   rememberProject: entry => ipcRenderer.invoke('home:remember-project', entry),
