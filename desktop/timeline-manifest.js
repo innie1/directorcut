@@ -42,6 +42,8 @@ function buildTimelineManifest(project = {}) {
   const canvasHeight = Math.max(0, Math.round(n(project.canvas?.height || project.media?.height)));
   const lines = ['DIRECTORCUT_TIMELINE_V3', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`];
   let clips = 0;
+  let videoClips = 0;
+  let audioClips = 0;
   let mediaLayer = 0;
   let duration = 0;
 
@@ -77,12 +79,14 @@ function buildTimelineManifest(project = {}) {
         ...effectFields(clip)
       ].join('\t'));
       clips++;
+      if (track.kind === 'video') videoClips++;
+      if (track.kind === 'audio') audioClips++;
       duration = Math.max(duration, start + clipDuration);
     }
   });
 
   lines.push(`end\t${ns(duration)}`);
-  return { text: `${lines.join('\n')}\n`, fps, clips, duration, canvasWidth, canvasHeight };
+  return { text: `${lines.join('\n')}\n`, fps, clips, videoClips, audioClips, duration, canvasWidth, canvasHeight };
 }
 
 module.exports = { buildTimelineManifest, ns, keyframeField, effectFields };
