@@ -43,6 +43,7 @@ class NativeProgramMonitor {
     this.surface = null;
     this.child = null;
     this.ready = false;
+    this.surfaceReady = false;
     this.enabled = false;
     this.lastBounds = null;
     this.manifestPath = null;
@@ -61,7 +62,8 @@ class NativeProgramMonitor {
       gstreamer: this.gstreamer,
       enabled: this.enabled,
       ready: this.ready,
-      backend: this.ready ? 'ges-native' : 'chromium-source',
+      surfaceReady: this.surfaceReady,
+      backend: this.ready && this.surfaceReady ? 'ges-native' : 'chromium-source',
       reason: !this.gstreamer?.available ? 'GStreamer runtime not detected.' : !this.gstreamer?.ges ? 'GStreamer Editing Services is not installed.' : !helper ? 'Native Program Monitor helper has not been built yet.' : null
     };
   }
@@ -117,7 +119,7 @@ class NativeProgramMonitor {
       }
     }
     this.pendingLines.push(trimmed);
-    if (this.pendingLines.length > 48) this.pendingLines.splice(0, this.pendingLines.length - 48);
+    if (this.pendingLines.length > 64) this.pendingLines.splice(0, this.pendingLines.length - 64);
   }
 
   waitFor(prefix, timeoutMs = 5000) {
@@ -152,6 +154,7 @@ class NativeProgramMonitor {
 
   async stop() {
     this.ready = false;
+    this.surfaceReady = false;
     this.enabled = false;
     if (this.surface && !this.surface.isDestroyed()) this.surface.hide();
     if (this.child) {
@@ -220,6 +223,7 @@ class NativeProgramMonitor {
     this.child.on('exit', (code, signal) => {
       const wasReady = this.ready;
       this.ready = false;
+      this.surfaceReady = false;
       this.enabled = false;
       if (this.surface && !this.surface.isDestroyed()) this.surface.hide();
       if (!wasReady) this.rejectWaiters(`Native Program Monitor exited before READY (${code ?? signal ?? 'unknown'}).`);
@@ -228,11 +232,40 @@ class NativeProgramMonitor {
     try {
       await this.waitFor('READY', 15000);
       this.ready = true;
-      this.enabled = true;
+
+      if (manifest.videoClips > 0) {
+        try {
+          await Promise.all([
+            this.waitFor('OVERLAY_READY', 3000),
+            this.waitFor('VIDEO_FRAME', 3000)
+          ]);
+          this.surfaceReady = true;
+        } catch (_) {
+          const detail = this.stderr.trim();
+          await this.stop();
+          return {
+            ok:false,
+            available:true,
+            reason: detail || 'Native GES did not confirm both an attached video overlay and a rendered frame. Chromium preview was kept active to prevent a black monitor.'
+          };
+        }
+      }
+
       if (positionSeconds > 0) await this.seek(positionSeconds);
       if (this.lastBounds) this.setBounds(this.lastBounds);
-      surface.showInactive();
-      return { ok:true, available:true, backend:'ges-native', clips:manifest.clips, duration:manifest.duration };
+      this.enabled = this.surfaceReady;
+      if (this.surfaceReady) surface.showInactive();
+      else surface.hide();
+      return {
+        ok:true,
+        available:true,
+        backend:this.surfaceReady ? 'ges-native' : 'ges-native-audio',
+        surfaceReady:this.surfaceReady,
+        clips:manifest.clips,
+        videoClips:manifest.videoClips,
+        audioClips:manifest.audioClips,
+        duration:manifest.duration
+      };
     } catch (error) {
       const detail = this.stderr.trim();
       await this.stop();
@@ -273,7 +306,7 @@ class NativeProgramMonitor {
     } catch (_) { return null; }
   }
   async setVisible(visible) {
-    this.enabled = Boolean(visible && this.ready);
+    this.enabled = Boolean(visible && this.ready && this.surfaceReady);
     if (!this.surface || this.surface.isDestroyed()) return this.enabled;
     if (this.enabled) this.surface.showInactive(); else this.surface.hide();
     return this.enabled;
