@@ -40,6 +40,7 @@
   const editedGrid = sections.querySelector('#homeEditedGrid');
   const projectsGrid = sections.querySelector('#homeProjectsGrid');
   const browseProject = sections.querySelector('#homeBrowseProject');
+  const welcomeOpen = document.querySelector('#welcomeOpen');
 
   function when(value) {
     if (!value) return 'Recently';
@@ -68,6 +69,25 @@
     node.querySelector('b').textContent = titleText;
     node.querySelector('span').textContent = bodyText;
     return node;
+  }
+
+  function openLoadedProject(project) {
+    if (!project) return false;
+    if (typeof loadProjectObject === 'function') loadProjectObject(project);
+    overlay.classList.add('hidden');
+    return true;
+  }
+
+  async function chooseProject() {
+    try {
+      if (window.directorcut?.homeChooseProject) {
+        const project = await window.directorcut.homeChooseProject();
+        if (openLoadedProject(project)) return;
+      }
+      document.querySelector('#openProject')?.click();
+    } catch (error) {
+      window.DirectorCutEditorToast?.(error.message || 'Could not open project');
+    }
   }
 
   function exportCard(entry) {
@@ -99,9 +119,7 @@
     const open = async () => {
       try {
         const project = autosaveProject || await window.directorcut?.homeOpenProject?.(entry.path);
-        if (!project) return;
-        if (typeof loadProjectObject === 'function') loadProjectObject(project);
-        overlay.classList.add('hidden');
+        openLoadedProject(project);
       } catch (error) {
         window.DirectorCutEditorToast?.(error.message || 'Could not open project');
       }
@@ -128,7 +146,7 @@
     if (autosave?.autosavedAt) projectsGrid.appendChild(projectCard(null, autosave));
     const projects = Array.isArray(history.projects) ? history.projects.slice(0, autosave?.autosavedAt ? 7 : 8) : [];
     projects.forEach(item => projectsGrid.appendChild(projectCard(item)));
-    if (!autosave?.autosavedAt && !projects.length) projectsGrid.appendChild(emptyCard('No saved projects yet', 'Save a project and it will appear here for one-click access.'));
+    if (!autosave?.autosavedAt && !projects.length) projectsGrid.appendChild(emptyCard('No saved projects yet', 'Save or open a project and it will appear here for one-click access.'));
   }
 
   function syncHomeMode() {
@@ -137,7 +155,13 @@
     if (home) refresh();
   }
 
-  browseProject?.addEventListener('click', () => document.querySelector('#openProject')?.click());
+  browseProject?.addEventListener('click', chooseProject);
+  welcomeOpen?.addEventListener('click', event => {
+    if (!window.directorcut?.homeChooseProject) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    chooseProject();
+  }, true);
   new MutationObserver(syncHomeMode).observe(overlay, { attributes:true, attributeFilter:['class'] });
   window.addEventListener('focus', () => { if (document.body.classList.contains('homeMode')) refresh(); });
 
