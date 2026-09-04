@@ -28,6 +28,7 @@ jobs:
           node --check prototype/timeline-engine.js
           node --check prototype/app.js
           node --check prototype/interaction-controller.js
+          node --check prototype/stage4-controller.js
       - name: Test desktop editing engine
         run: |
           node desktop/tests/media-utils.test.js
