@@ -1,7 +1,8 @@
 const assert=require('assert');
 const TL=require('../../prototype/timeline-engine');
-const base=TL.normalizeTimeline({fps:'30/1',tracks:[{id:'V1',kind:'video',clips:[TL.createClip({id:'a',trackId:'V1',start:0,duration:5,sourceDuration:10}),TL.createClip({id:'b',trackId:'V1',start:5,duration:5,sourceIn:2,sourceDuration:12}),TL.createClip({id:'c',trackId:'V1',start:10,duration:5,sourceIn:2,sourceDuration:12})]}]});
+const base=TL.normalizeTimeline({fps:'30/1',tracks:[{id:'V1',kind:'video',clips:[TL.createClip({id:'a',trackId:'V1',start:0,duration:5,sourceDuration:10,keyframes:{opacity:[{time:1,value:.5},{time:4,value:1}]}}),TL.createClip({id:'b',trackId:'V1',start:5,duration:5,sourceIn:2,sourceDuration:12}),TL.createClip({id:'c',trackId:'V1',start:10,duration:5,sourceIn:2,sourceDuration:12})]}]});
 assert.equal(TL.snapDelta(-1.02,30),-1.0333333333333334);
+const split=TL.splitAt(base,2);assert.equal(split.tracks[0].clips.length,4);assert.equal(split.tracks[0].clips[0].duration,2);assert.equal(split.tracks[0].clips[1].start,2);assert.equal(split.tracks[0].clips[1].sourceIn,2);assert.equal(split.tracks[0].clips[1].keyframes.opacity[0].time,2);
 const slipped=TL.slipClip(base,'b',-1);assert.equal(TL.findClip(slipped,'b').clip.sourceIn,1);
 const slideL=TL.slideClip(base,'b',-1);assert.equal(TL.findClip(slideL,'b').clip.start,4);assert.equal(TL.findClip(slideL,'c').clip.sourceIn,1);
 const slideR=TL.slideClip(base,'b',1);assert.equal(TL.findClip(slideR,'b').clip.start,6);assert.equal(TL.findClip(slideR,'c').clip.start,11);
