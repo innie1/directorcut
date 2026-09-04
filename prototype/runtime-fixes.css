@@ -1,0 +1,14 @@
+/* Hard preview gaps and responsive Director composer state. */
+.videoViewport.timelineGapActive{background:#000!important}
+.timelineGapOverlay.hardGap{z-index:40!important;background:#000!important;color:transparent!important}
+.timelineGapOverlay.hardGap::before{content:'';position:absolute;inset:0;background:#000}
+.videoViewport video.timelineHardGap{opacity:0!important;visibility:hidden!important}
+.right .floatingComposer{position:relative;z-index:80;pointer-events:auto!important}
+.right .floatingComposer textarea{pointer-events:auto!important;cursor:text}
+.right .floatingComposer.composerBusy{border-color:#455a75!important}
+.right .floatingComposer.composerBusy .sendButton{opacity:1!important;background:#dbe7f5!important;color:#111820!important}
+.right .floatingComposer.aiWarming{border-color:#36465c!important}
+#composerAiState{font-size:8px;color:#718096;white-space:nowrap}
+#composerAiState[data-mode="warming"],#composerAiState[data-mode="working"]{color:#9dbbe2}
+#composerAiState[data-mode="ready"]{color:#77cfa3}
+#composerAiState[data-mode="offline"]{color:#d68a90}
