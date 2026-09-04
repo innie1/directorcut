@@ -5,6 +5,7 @@ const { attachNativeProgramMonitor } = require('./native-monitor-ipc');
 const { attachHomeHistory } = require('./home-history');
 const { renderCuts, wordsToSrt } = require('./media-utils');
 const { renderTimelineProject } = require('./timeline-renderer-stage4');
+const { analyzeFootage } = require('./footage-intelligence');
 const CE = require('../prototype/caption-editor-utils');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -37,6 +38,19 @@ ipcMain.handle('lut:pick', async () => {
   });
   if (result.canceled || !result.filePaths?.[0]) return null;
   return { path:path.resolve(result.filePaths[0]) };
+});
+
+ipcMain.handle('media:analyze', async (_event, payload = {}) => {
+  const sourcePath = payload?.sourcePath || payload?.path;
+  if (!sourcePath) throw new Error('Choose a local media file before running footage analysis.');
+  return analyzeFootage({
+    sourcePath,
+    sceneThreshold:payload.sceneThreshold ?? .30,
+    noiseDb:payload.noiseDb ?? -35,
+    minSilence:payload.minSilence ?? .35,
+    maxQualitySamples:payload.maxQualitySamples ?? 32,
+    sampleSize:payload.sampleSize ?? 16
+  });
 });
 
 // main.js provides the base application handlers. Stage 4 replaces only export
