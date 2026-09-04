@@ -68,5 +68,29 @@
     return{scenes:rows.length,accepted,skipped,missing,ready:accepted>0&&missing===0,fingerprint:fingerprint(session)};
   }
 
-  return{acceptedTake,alignment,acceptedRows,fingerprint,plan,alignedMedia,clipAlignment,summary};
+  function assembleTimeline(baseTimeline,session={},options={}){
+    const MU=options.mediaLibraryUtils,TL=options.timelineUtils;
+    if(!MU?.appendMedia||!TL?.duration||!TL?.findClip)throw new Error('Recording assembly requires media-library and timeline utilities.');
+    const start=Number.isFinite(Number(options.start))?Math.max(0,Number(options.start)):Math.max(0,Number(TL.duration(baseTimeline)||0));
+    const assemblyPlan=plan(session,start);
+    if(assemblyPlan.missing.length)throw new Error(`Recording assembly is missing accepted takes for scene${assemblyPlan.missing.length===1?'':'s'} ${assemblyPlan.missing.join(', ')}.`);
+    if(!assemblyPlan.items.length)throw new Error('Recording assembly has no accepted takes.');
+    let timeline=clone(baseTimeline),clipIds=[],media=[];
+    const assemblyId=String(options.assemblyId||`assembly-${Date.now().toString(36)}`);
+    for(const item of assemblyPlan.items){
+      const aligned=alignedMedia(item,session),seed=`${assemblyId}-${String(item.sceneNumber).padStart(3,'0')}-${item.takeId}`;
+      timeline=MU.appendMedia(timeline,aligned,{idSeed:seed});
+      media.push(aligned);
+      for(const id of [`${seed}-v`,`${seed}-a`]){
+        const found=TL.findClip(timeline,id);
+        if(!found)continue;
+        found.clip.recordingAlignment=clipAlignment(item,session);
+        found.clip.assemblyId=assemblyId;
+        clipIds.push(id);
+      }
+    }
+    return{timeline,assemblyId,plan:assemblyPlan,clipIds,media,end:Number(TL.duration(timeline)||assemblyPlan.end)};
+  }
+
+  return{acceptedTake,alignment,acceptedRows,fingerprint,plan,alignedMedia,clipAlignment,summary,assembleTimeline};
 });
