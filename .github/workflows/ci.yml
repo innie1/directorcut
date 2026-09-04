@@ -56,10 +56,10 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Syntax desktop host and Program Monitor bridge
         run: node --check desktop/main-v04.js && node --check desktop/main.js && node --check desktop/preload.js && node --check desktop/home-history.js && node --check desktop/native-program-monitor.js && node --check desktop/native-monitor-ipc.js && node --check desktop/timeline-manifest.js
-      - name: Syntax media and local AI
-        run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
-      - name: Syntax timeline engine and base UI
-        run: node --check prototype/timeline-engine.js && node --check prototype/caption-utils.js && node --check prototype/selection-actions.js && node --check prototype/preview-gap-utils.js && node --check prototype/media-library-utils.js && node --check prototype/media-library-runtime.js && node --check prototype/edit-undo-utils.js && node --check prototype/professional-timeline-utils.js && node --check prototype/professional-timeline-runtime.js && node --check prototype/professional-inspector-utils.js && node --check prototype/audio-post-utils.js && node --check prototype/advanced-inspector-utils.js && node --check prototype/effects-color-utils.js && node --check prototype/transitions-utils.js && node --check prototype/professional-inspector.js && node --check prototype/advanced-inspector.js && node --check prototype/native-inspector-live.js && node --check prototype/effects-color-runtime.js && node --check prototype/transitions-runtime.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
+      - name: Syntax media local AI and Stage 4 renderer
+        run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/timeline-renderer-stage4.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
+      - name: Syntax timeline Inspector and caption UI
+        run: node --check prototype/timeline-engine.js && node --check prototype/caption-editor-utils.js && node --check prototype/caption-utils.js && node --check prototype/caption-inspector.js && node --check prototype/selection-actions.js && node --check prototype/preview-gap-utils.js && node --check prototype/media-library-utils.js && node --check prototype/media-library-runtime.js && node --check prototype/edit-undo-utils.js && node --check prototype/professional-timeline-utils.js && node --check prototype/professional-timeline-runtime.js && node --check prototype/professional-inspector-utils.js && node --check prototype/audio-post-utils.js && node --check prototype/advanced-inspector-utils.js && node --check prototype/effects-color-utils.js && node --check prototype/transitions-utils.js && node --check prototype/professional-inspector.js && node --check prototype/advanced-inspector.js && node --check prototype/native-inspector-live.js && node --check prototype/effects-color-runtime.js && node --check prototype/transitions-runtime.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
       - name: Syntax advanced timeline and professional workflow
         run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js && node --check prototype/pro-workflow.js && node --check prototype/selection-workflow.js && node --check prototype/program-monitor.js && node --check prototype/capcut-workflow.js && node --check prototype/playback-gap-guard.js && node --check prototype/composer-runtime.js && node --check prototype/edit-undo-runtime.js && node --check prototype/home-dashboard.js
       - name: Test media utilities
@@ -70,6 +70,8 @@ jobs:
         run: node desktop/tests/selection-actions.test.js
       - name: Test caption timeline utilities
         run: node desktop/tests/caption-utils.test.js
+      - name: Test Stage 4 caption editing and SRT model
+        run: node desktop/tests/caption-editor-utils.test.js
       - name: Test source preview gap detection
         run: node desktop/tests/preview-gap-utils.test.js
       - name: Test multi-source media library
@@ -92,5 +94,7 @@ jobs:
         run: node desktop/tests/timeline-manifest.test.js
       - name: Render real Stage 3 multitrack and transition smoke test
         run: node desktop/tests/timeline-renderer.test.js
+      - name: Render real Stage 4 caption burn-in smoke test
+        run: node desktop/tests/caption-renderer-stage4.test.js
       - name: Check local transcription adapter
         run: python3 -m py_compile scripts/transcribe_local.py
