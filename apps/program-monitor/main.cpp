@@ -161,8 +161,6 @@ public:
             }
         }
 
-        // Synchronous commit guarantees that READY later really means the GES graph
-        // reflects the timeline supplied by DirectorCut.
         ges_timeline_commit_sync(timeline_);
 
         pipeline_ = ges_pipeline_new();
@@ -170,6 +168,10 @@ public:
             error = "GES could not create preview pipeline";
             return false;
         }
+        // GESPipeline derives from GInitiallyUnowned. Keep a strong reference for
+        // the entire TimelinePlayer lifetime instead of leaving its constructor's
+        // floating reference available to internal GStreamer ownership changes.
+        g_object_ref_sink(pipeline_);
 
         GstElement* video_sink = nullptr;
         GstElement* audio_sink = nullptr;
@@ -186,10 +188,15 @@ public:
             audio_sink = gst_element_factory_make("autoaudiosink", "directorcut-audio-sink");
         }
         if (video_sink) {
+            // GstElements are initially floating too. Sink our reference first so
+            // the preview property and our temporary reference have unambiguous
+            // ownership, then release only our copy.
+            g_object_ref_sink(video_sink);
             ges_pipeline_preview_set_video_sink(pipeline_, video_sink);
             g_object_unref(video_sink);
         }
         if (audio_sink) {
+            g_object_ref_sink(audio_sink);
             ges_pipeline_preview_set_audio_sink(pipeline_, audio_sink);
             g_object_unref(audio_sink);
         }
@@ -198,7 +205,8 @@ public:
             error = "GES could not attach timeline to preview pipeline";
             return false;
         }
-        timeline_ = nullptr; // the pipeline owns the floating timeline reference
+        // set_timeline consumes/sinks the timeline's floating reference.
+        timeline_ = nullptr;
 
         if (!ges_pipeline_set_mode(pipeline_, GES_PIPELINE_MODE_PREVIEW)) {
             error = "GES could not enable preview mode";
@@ -206,6 +214,10 @@ public:
         }
 
         GstBus* bus = gst_element_get_bus(GST_ELEMENT(pipeline_));
+        if (!bus) {
+            error = "GES preview pipeline did not expose a GstBus";
+            return false;
+        }
         if (!headless) gst_bus_set_sync_handler(bus, bus_sync_handler, &window_handle_, nullptr);
         gst_object_unref(bus);
 
@@ -246,11 +258,11 @@ private:
     void reset() {
         if (pipeline_) {
             gst_element_set_state(GST_ELEMENT(pipeline_), GST_STATE_NULL);
-            gst_object_unref(pipeline_);
+            g_object_unref(pipeline_);
             pipeline_ = nullptr;
         }
         if (timeline_) {
-            gst_object_unref(timeline_);
+            g_object_unref(timeline_);
             timeline_ = nullptr;
         }
     }
