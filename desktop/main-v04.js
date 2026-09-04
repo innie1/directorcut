@@ -26,6 +26,19 @@ app.on('browser-window-created', (_event, window) => {
 
 require('./main');
 
+ipcMain.handle('lut:pick', async () => {
+  const result = await dialog.showOpenDialog({
+    title:'Choose a color LUT',
+    properties:['openFile'],
+    filters:[
+      { name:'3D LUT', extensions:['cube','3dl','dat','m3d'] },
+      { name:'All files', extensions:['*'] }
+    ]
+  });
+  if (result.canceled || !result.filePaths?.[0]) return null;
+  return { path:path.resolve(result.filePaths[0]) };
+});
+
 // main.js provides the base application handlers. Stage 4 replaces only export
 // handlers so edited caption clips become the source of truth for both MP4 and SRT.
 ipcMain.removeHandler('video:export');
