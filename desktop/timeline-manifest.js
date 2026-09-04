@@ -4,10 +4,23 @@ const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback
 const ns = seconds => Math.max(0, Math.round(n(seconds) * 1e9));
 const encodeField = value => encodeURIComponent(String(value ?? ''));
 
+function keyframeField(clip, property) {
+  const frames = Array.isArray(clip?.keyframes?.[property]) ? clip.keyframes[property] : [];
+  const normalized = frames
+    .map(frame => ({ time:Math.max(0, n(frame?.time)), value:n(frame?.value) }))
+    .filter(frame => Number.isFinite(frame.value))
+    .sort((a,b) => a.time - b.time)
+    .map(frame => `${ns(frame.time)}:${frame.value}`)
+    .join(',');
+  return encodeField(normalized);
+}
+
 function buildTimelineManifest(project = {}) {
   const timeline = project.timeline || { tracks: [] };
   const fps = n(timeline.fps || project.media?.frameRate, 30);
-  const lines = ['DIRECTORCUT_TIMELINE_V1', `fps\t${fps}`];
+  const canvasWidth = Math.max(0, Math.round(n(project.canvas?.width || project.media?.width)));
+  const canvasHeight = Math.max(0, Math.round(n(project.canvas?.height || project.media?.height)));
+  const lines = ['DIRECTORCUT_TIMELINE_V2', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`];
   let clips = 0;
   let mediaLayer = 0;
   let duration = 0;
@@ -35,7 +48,14 @@ function buildTimelineManifest(project = {}) {
         Math.max(1, ns(clipDuration)),
         encodeField(source),
         encodeField(clip.id || ''),
-        encodeField(clip.name || path.basename(source))
+        encodeField(clip.name || path.basename(source)),
+        keyframeField(clip, 'x'),
+        keyframeField(clip, 'y'),
+        keyframeField(clip, 'scale'),
+        keyframeField(clip, 'rotation'),
+        keyframeField(clip, 'opacity'),
+        keyframeField(clip, 'speed'),
+        keyframeField(clip, 'volume')
       ].join('\t'));
       clips++;
       // Native preview duration must reflect exactly what GES receives. Hidden
@@ -45,7 +65,7 @@ function buildTimelineManifest(project = {}) {
   });
 
   lines.push(`end\t${ns(duration)}`);
-  return { text: `${lines.join('\n')}\n`, fps, clips, duration };
+  return { text: `${lines.join('\n')}\n`, fps, clips, duration, canvasWidth, canvasHeight };
 }
 
-module.exports = { buildTimelineManifest, ns };
+module.exports = { buildTimelineManifest, ns, keyframeField };
