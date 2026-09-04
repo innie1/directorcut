@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('directorcut', {
   programMonitorPlay: () => ipcRenderer.invoke('monitor:play'),
   programMonitorPause: () => ipcRenderer.invoke('monitor:pause'),
   programMonitorSeek: seconds => ipcRenderer.invoke('monitor:seek', seconds),
+  programMonitorSetProperty: (clipId, property, value) => ipcRenderer.invoke('monitor:set-property', { clipId, property, value }),
   programMonitorPosition: () => ipcRenderer.invoke('monitor:position'),
   programMonitorVisible: visible => ipcRenderer.invoke('monitor:visible', visible),
   programMonitorStop: () => ipcRenderer.invoke('monitor:stop')
