@@ -16,6 +16,7 @@
   const pm = {
     available:false,
     active:false,
+    surfaceReady:false,
     loading:false,
     playing:false,
     position:0,
@@ -45,6 +46,7 @@
 
   function useSourcePreview(reason = null) {
     pm.active = false;
+    pm.surfaceReady = false;
     pm.missedPolls = 0;
     if (reason) pm.reason = reason;
     video.style.visibility = 'visible';
@@ -58,14 +60,18 @@
   }
 
   function useNativePreview() {
+    if (!pm.surfaceReady) {
+      useSourcePreview('Native timeline engine is running, but its video surface is not confirmed ready.');
+      return false;
+    }
     if (pm.previousMuted === null) pm.previousMuted = Boolean(video.muted);
-    // HTML video remains a compatibility clock. GES owns the audible timeline.
     video.muted = true;
     video.style.visibility = 'hidden';
     pm.active = true;
     pm.missedPolls = 0;
     setBadge('TIMELINE · GES', true);
     setStatus('Native GStreamer/GES timeline preview active.');
+    return true;
   }
 
   async function syncBounds() {
@@ -104,6 +110,7 @@
     const duration = timelineDuration();
     if (!duration) return false;
     pm.loading = true;
+    pm.surfaceReady = false;
     const generation = ++pm.generation;
     setBadge('LOADING', false);
     setStatus('Preparing GES timeline preview…');
@@ -118,9 +125,18 @@
       pm.position = Math.min(seconds(position), duration);
       pm.duration = Number(result.duration || duration);
       pm.reason = null;
-      useNativePreview();
+      pm.surfaceReady = Boolean(result.surfaceReady);
+      if (!pm.surfaceReady && Number(result.videoClips || 0) > 0) {
+        useSourcePreview('Native GES did not confirm a rendered video surface.');
+        return false;
+      }
+      if (!useNativePreview()) return false;
       await syncBounds();
-      await window.directorcut.programMonitorVisible(true);
+      const visible = await window.directorcut.programMonitorVisible(true);
+      if (!visible) {
+        useSourcePreview('Native video surface could not be shown safely.');
+        return false;
+      }
       if (pm.playing) await window.directorcut.programMonitorPlay();
       return true;
     } catch (error) {
@@ -157,7 +173,6 @@
     }
   }
 
-  // Keep native playback synchronized with existing transport and keyboard logic.
   video.addEventListener('play', () => {
     pm.playing = true;
     updatePlayButton();
@@ -174,9 +189,6 @@
     window.directorcut.programMonitorSeek(pm.position).catch(() => {});
   });
 
-  // GES is the playback authority when active. Poll its timeline position and use
-  // that to draw the playhead/timecode. If the helper disappears, fail back to the
-  // source preview instead of leaving a black/hidden monitor.
   pm.pollTimer = setInterval(async () => {
     if (!pm.active || pm.loading) return;
     const position = await window.directorcut.programMonitorPosition().catch(() => null);
@@ -201,8 +213,6 @@
     }
   }, 120);
 
-  // Editing functions already call markDirty after committed changes. Reload the GES
-  // graph only after the user finishes the edit instead of during every drag frame.
   if (typeof markDirty === 'function') {
     const baseMarkDirty = markDirty;
     markDirty = function (...args) {
