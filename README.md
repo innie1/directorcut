@@ -1,112 +1,130 @@
-# DirectorCut 0.2
+# DirectorCut 0.3
 
-**DirectorCut** is a local-first intelligent video-editor project: a real editing core plus a Director layer that can learn a creator's corrections over time. It is designed so paid AI APIs are optional rather than fundamental.
+**DirectorCut** is a local-first intelligent video editor: a real manual timeline plus a Director layer that can converse naturally, use local models, perform typed edits, and learn from accepted/rejected decisions. Paid AI APIs are optional rather than fundamental.
 
-> Status: **working developer MVP**. It can import/probe local video, create script scenes, perform reversible In/Out cut planning, render those cuts through FFmpeg, save/open projects, transcribe locally with Whisper, search exact spoken phrases by timestamp, export SRT captions, and use a local llama.cpp-compatible Director. The native C++ command/timeline core is compiled and tested. It is not yet a Premiere/Resolve replacement; see `docs/ROADMAP.md`.
+> Status: **integrated developer MVP**. The current desktop app is ready for hands-on testing. It is not yet a Premiere/Resolve replacement; the native GStreamer monitor, multi-source compositor/export, and rendered keyframe effects are still being completed.
 
-## Fastest Windows start
-
-Prerequisites: Node.js LTS, Python 3.11/3.12+, and FFmpeg/ffprobe in PATH.
+## Windows — clone/update and run
 
 ```powershell
-git clone https://github.com/innie1/directorcut.git
+git clone --branch main11 https://github.com/innie1/directorcut.git
 cd directorcut
 .\scripts\setup-windows.ps1
 .\scripts\run-windows.ps1
 ```
 
-If you also want local Whisper transcription:
+If you already cloned it:
+
+```powershell
+git checkout main11
+git pull origin main11
+.\scripts\setup-windows.ps1
+.\scripts\run-windows.ps1
+```
+
+Optional local Whisper transcription:
 
 ```powershell
 .\scripts\setup-windows.ps1 -InstallAI
 ```
 
-If a prerequisite is missing, the setup script prints the matching `winget` install command.
+Base setup requires Node.js LTS and FFmpeg/ffprobe. Python is only needed for Whisper.
 
-## Linux start
+## What is integrated in 0.3
 
-```bash
-git clone https://github.com/innie1/directorcut.git
-cd directorcut
-./scripts/setup-linux.sh
-./scripts/run-linux.sh
-```
+### Manual + Director on the same timeline
 
-## What the desktop MVP can do
+The top workspace toggle switches between **Manual** and **Director** without changing projects or timelines.
 
-- Pick a local video with the native file dialog.
-- Probe duration, resolution and codecs with `ffprobe`.
-- Preview video locally; it is not uploaded.
-- Import a `.txt` or `.md` script and create a scene plan.
-- Mark scenes and split points.
-- Set **In** / **Out**, delete that range, and undo the change.
-- Render the retained ranges into an MP4 using local FFmpeg.
-- Save and reopen `.directorcut` project files.
-- Run faster-whisper locally for word timestamps.
-- Search `where did I say ...`-style phrases and jump the playhead to the exact time.
-- Export timestamped transcript words as `.srt` captions.
-- Work in Director **Ask / Co-edit / Auto** modes.
-- Talk to a local OpenAI-compatible LLM endpoint (for example llama.cpp `llama-server`).
-- Fall back to deterministic editing guidance when no local LLM is running.
+- **Manual** — hand-edit normally. AI can chat, explain, search and analyze but cannot mutate the timeline.
+- **Director / Ask** — AI may analyze and explain edits but cannot mutate.
+- **Director / Co-edit** — AI returns validated typed operations and asks you to Apply or Reject.
+- **Director / Auto** — validated editing operations can be applied automatically and remain undoable/logged.
+
+### Ollama
+
+DirectorCut automatically checks local Ollama at `127.0.0.1:11434`, lists models already installed on the computer, remembers the selected model, and warms the selected model for faster conversation. Normal conversation is classified separately from editing tasks. A llama.cpp-compatible endpoint remains available as a fallback.
+
+### Floating composer
+
+A compact floating composer stays available while editing. The `+` button can attach documents, text, images, audio, video and other files as local conversation/editing context. Recent conversation, current playhead, selected clip, In/Out range, transcript excerpt, scene plan and timeline IDs can be supplied to the Director.
+
+### Professional timeline foundation
+
+- Multiple video/audio/caption/graphics tracks.
+- Real frame-snapped clip splitting.
+- Draggable clips with snapping.
+- Select / Ripple / Roll / Slip / Slide tools.
+- Source-aware trim limits.
+- Frame-rate-snapped In/Out cuts and markers.
+- Keyframe storage/display for opacity, scale, volume and future properties.
+- Undo snapshots.
+- Atomic autosave and recovery.
+- Director operations use the same timeline primitives as manual edits.
+
+### Media performance
+
+- FFmpeg media probing.
+- Background thumbnail generation.
+- Background audio waveform generation.
+- Optional cached 1280-wide editing proxy.
+- Proxy/original preview toggle; final cut export continues from the original source.
+- Frame-snapped cut export uses decode-accurate seeking.
+
+### GStreamer / GPU path
+
+DirectorCut detects GStreamer, GStreamer Editing Services (GES), and common hardware plugin families such as D3D11/12, Vulkan, NVCodec, QSV, VAAPI and AMF. The native C++ `directorcut_gstreamer` target uses GStreamer `playbin3`/`playbin` with accurate seeking when GStreamer development libraries are installed.
+
+**Important:** the Electron program monitor in 0.3 still uses Chromium playback. The native GStreamer backend is now scaffolded and buildable, but the final embedded GStreamer monitor/GES compositor bridge is the next native integration step.
+
+## Other working features
+
+- Import/probe local media; media is not uploaded by default.
+- Import `.txt` / `.md` scripts and create scene plans.
+- Local faster-whisper transcription with word timestamps.
+- Search an exact spoken phrase and jump to its timestamp.
+- SRT subtitle export.
+- Save/open `.directorcut` projects.
+- FFmpeg MP4 export for current cut plan.
+- Markdown Director skills.
+- Persistent learning history for accepted/rejected decisions.
 
 ## Native core
-
-The C++20 core owns durable editing primitives and learning history:
 
 ```bash
 cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF
 cmake --build build -j
 ctest --test-dir build --output-on-failure
-./build/directorcut demo
 ```
 
-Windows with Visual Studio Build Tools:
-
-```powershell
-cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
-.\build\Release\directorcut.exe demo
-```
-
-SQLite development files are required for the native core. Qt 6 is optional; if Qt 6 Quick/QML is installed, CMake also builds the experimental `directorcut_desktop` shell. The immediately runnable UI is currently Electron while the GStreamer/Qt professional playback engine is built out.
-
-## Local Director model
-
-DirectorCut looks for a local OpenAI-compatible server at `http://127.0.0.1:8080/v1/chat/completions`.
-
-Example with llama.cpp:
-
-```text
-llama-server -m C:\models\director-model.gguf --port 8080 -c 8192
-```
-
-See `docs/LOCAL_AI.md`.
+If GStreamer development packages are visible through `pkg-config`, CMake also builds `directorcut_gstreamer`. If GES is found, the target gets `DIRECTORCUT_HAS_GES=1`. Missing GStreamer/Qt packages do not prevent the core/CLI from building.
 
 ## Repository map
 
-- `core/` — C++ timeline, commands, learning-event store, transcript primitives, media helpers
+- `core/` — C++ core plus optional native GStreamer playback backend
 - `apps/cli/` — native core demo/CLI
-- `desktop/` — Electron desktop host and safe IPC bridge
-- `prototype/` — renderer UI used by the desktop shell and standalone browser fallback
-- `native-ui/` — Qt/QML shell source for the future native professional UI
-- `scripts/` — local transcription and setup/run scripts
+- `desktop/` — Electron host, Ollama client, GStreamer detection, FFmpeg background jobs and IPC
+- `prototype/` — current integrated editor renderer and frame-snapped timeline engine
+- `native-ui/` — Qt/QML native-shell work
+- `scripts/` — setup/run/transcription helpers
 - `skills/` — editable Markdown Director skills
-- `docs/` — architecture, local AI setup, status, and roadmap
-- `tests/` — native core tests
+- `docs/` — architecture, roadmap and `V0.3_TESTING.md`
+- `tests/` / `desktop/tests/` — C++ and renderer/timeline regression tests
 
 ## Design invariants
 
-1. Every Director edit should resolve to a typed timeline operation.
-2. Destructive decisions must be undoable or transaction-previewed.
-3. Ask mode cannot silently mutate the timeline.
-4. Co-edit mode proposes before commit.
-5. Auto mode still logs every operation.
-6. User corrections are learning events, not invisible prompt text.
-7. Motion graphics should remain editable until export.
+1. Manual and Director always operate on the same durable timeline.
+2. Every Director edit resolves to a typed timeline operation.
+3. Destructive decisions are undoable or transaction-previewed.
+4. Manual and Director/Ask cannot silently mutate the timeline.
+5. Co-edit proposes before commit; Auto still logs every operation.
+6. Conversation is not automatically treated as an editing task.
+7. User corrections are learning events, not invisible prompt text.
 8. Models are replaceable; project/timeline formats are not model-owned.
 9. Media stays local unless the user explicitly chooses a network/cloud feature.
 
+See `docs/V0.3_TESTING.md` for the integrated test flow.
+
 ## Commercial note
 
-This repository is currently proprietary / all-rights-reserved. Before commercial distribution, codec, Qt/GStreamer/FFmpeg build flags, bundled models, model weights, and every third-party component must go through a formal license review.
+This repository is currently proprietary / all-rights-reserved. Before commercial distribution, codec, Qt/GStreamer/FFmpeg build flags, bundled models/model weights, and all third-party components require a formal license review.
