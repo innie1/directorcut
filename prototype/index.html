@@ -11,117 +11,34 @@
   <div class="brand">DIRECTOR<span>CUT</span></div>
   <input id="projectName" class="projectName" value="Untitled Project" aria-label="Project name">
   <div class="spacer"></div>
-  <div class="modes">
-    <button data-mode="Ask">Ask</button>
-    <button class="active" data-mode="Co-edit">Co-edit</button>
-    <button data-mode="Auto">Auto</button>
+  <div class="workspaceToggle" title="Manual keeps AI advisory. Director allows typed editing actions.">
+    <button class="active" data-workspace="Manual">Manual</button>
+    <button data-workspace="Director">Director</button>
   </div>
-  <button id="openProject">Open</button>
-  <button id="saveProject">Save</button>
-  <button id="exportSrt">Captions</button>
-  <button id="exportVideo" class="primary">Export video</button>
+  <div class="directorPolicy" id="directorPolicy">
+    <button data-policy="Ask">Ask</button><button class="active" data-policy="Co-edit">Co-edit</button><button data-policy="Auto">Auto</button>
+  </div>
+  <select id="topModel" class="topModel" aria-label="Local AI model"><option>Local AI…</option></select>
+  <button id="openProject">Open</button><button id="saveProject">Save</button><button id="exportSrt">Captions</button><button id="exportVideo" class="primary">Export video</button>
 </header>
-
 <main>
   <aside class="left">
-    <h4>PROJECT</h4>
-    <button class="nav active">Media</button>
-    <button class="nav">Scenes</button>
-    <button class="nav">Script</button>
-    <button class="nav">References</button>
-    <button class="nav">Graphics</button>
-    <button class="nav">Skills</button>
-
-    <div class="drop">
-      <strong>Import footage</strong>
-      <small>Media stays on your computer.</small>
-      <button id="pickVideo">Choose video</button>
-      <input id="videoInput" type="file" accept="video/*">
-    </div>
-
-    <div class="drop">
-      <strong>Import script</strong>
-      <small>.txt or .md</small>
-      <button id="pickScript">Choose script</button>
-      <input id="scriptInput" type="file" accept=".txt,.md,text/plain">
-    </div>
-
-    <div class="drop">
-      <strong>Local AI</strong>
-      <small id="aiStatus">Director model: checking on first prompt</small>
-      <button id="transcribe">Transcribe locally</button>
-      <select id="whisperModel" aria-label="Whisper model">
-        <option value="tiny">Whisper tiny</option>
-        <option value="base">Whisper base</option>
-        <option value="small" selected>Whisper small</option>
-        <option value="medium">Whisper medium</option>
-      </select>
-    </div>
-
+    <h4>PROJECT</h4><button class="nav active">Media</button><button class="nav">Scenes</button><button class="nav">Script</button><button class="nav">References</button><button class="nav">Graphics</button><button class="nav">Skills</button>
+    <div class="drop"><strong>Import footage</strong><small>Media stays on your computer.</small><button id="pickVideo">Choose video</button><input id="videoInput" type="file" accept="video/*"></div>
+    <div class="drop"><strong>Import script</strong><small>.txt or .md</small><button id="pickScript">Choose script</button><input id="scriptInput" type="file" accept=".txt,.md,text/plain"></div>
+    <div class="drop localAiCard"><div class="row"><strong>Local AI</strong><button id="refreshAI" class="iconButton" title="Refresh local AI">↻</button></div><small id="aiStatus">Checking Ollama…</small><select id="ollamaModel" aria-label="Ollama model"><option>Checking models…</option></select><small id="modelMeta">Select any model installed in Ollama.</small><button id="transcribe">Transcribe locally</button><select id="whisperModel" aria-label="Whisper model"><option value="tiny">Whisper tiny</option><option value="base">Whisper base</option><option value="small" selected>Whisper small</option><option value="medium">Whisper medium</option></select></div>
+    <div class="drop engineCard"><strong>Playback engine</strong><small id="gstStatus">Checking GStreamer…</small><div class="row"><button id="makeProxy">Build proxy</button><label class="check"><input type="checkbox" id="proxyToggle"> Use proxy</label></div><small id="cacheStatus">Thumbnails and waveform prepare in background.</small></div>
     <div class="mediaInfo" id="mediaInfo">No media loaded.</div>
   </aside>
-
   <section class="center">
-    <div class="monitor">
-      <video id="video" controls></video>
-      <div id="emptyMonitor"><b>PROGRAM MONITOR</b><span>Load footage to begin</span></div>
-    </div>
-
-    <div class="transport">
-      <span id="time">00:00:00.000</span>
-      <button id="markScene">+ Scene</button>
-      <button id="split">Split</button>
-      <span class="transportDivider"></span>
-      <button id="setIn">Set In</button>
-      <button id="setOut">Set Out</button>
-      <button id="deleteRange" class="danger">Delete In→Out</button>
-      <button id="undoEdit">Undo</button>
-      <span id="rangeReadout">In — / Out —</span>
-    </div>
-
-    <div class="composer">
-      <div class="composerHead">
-        <b>COMPOSER</b>
-        <span id="transcriptMode">SCRIPT</span>
-        <input id="search" placeholder="Find what I said…">
-        <button id="searchBtn">Find</button>
-      </div>
-      <div id="transcript" contenteditable="true">Load a script or run local transcription. Word-timestamp transcripts let DirectorCut jump directly to spoken phrases.</div>
-    </div>
+    <div class="monitor"><video id="video" controls></video><div id="emptyMonitor"><b>PROGRAM MONITOR</b><span>Load footage to begin</span></div><div class="monitorBadges"><span id="previewBadge">ORIGINAL</span><span id="fpsBadge">— FPS</span></div></div>
+    <div class="transport"><span id="time">00:00:00.000</span><div class="toolGroup" id="editTools"><button class="active" data-tool="select">Select</button><button data-tool="ripple">Ripple</button><button data-tool="roll">Roll</button><button data-tool="slip">Slip</button><button data-tool="slide">Slide</button></div><button id="markScene">+ Marker</button><button id="split">Split</button><span class="transportDivider"></span><button id="setIn">In</button><button id="setOut">Out</button><button id="deleteRange" class="danger">Delete In→Out</button><button id="undoEdit">Undo</button><select id="keyframeProperty"><option value="opacity">Opacity</option><option value="scale">Scale</option><option value="volume">Volume</option></select><input id="keyframeValue" type="number" step="0.05" value="1"><button id="addKeyframe">◇ Keyframe</button><span id="rangeReadout">In — / Out —</span></div>
+    <div class="transcriptPanel"><div class="composerHead"><b>TRANSCRIPT / SCRIPT</b><span id="transcriptMode">SCRIPT</span><input id="search" placeholder="Find what I said…"><button id="searchBtn">Find</button></div><div id="transcript" contenteditable="true">Load a script or run local transcription. Word-timestamp transcripts let DirectorCut jump directly to spoken phrases.</div></div>
   </section>
-
-  <aside class="right">
-    <div class="directorHead">
-      <div><b>DIRECTOR</b><small id="modeLabel">CO-EDIT MODE</small></div>
-      <span class="dot"></span>
-    </div>
-    <div id="activity" class="activity">
-      <div class="message ai">Give me footage and a script. I’ll build scenes, learn your corrections, and keep every destructive edit reversible.</div>
-    </div>
-    <div class="proposal" id="proposal" hidden>
-      <b>Proposed change</b>
-      <span id="proposalText"></span>
-      <div><button id="reject">Reject</button><button id="approve" class="primary">Apply</button></div>
-    </div>
-    <div class="prompt">
-      <textarea id="prompt" placeholder="Tell Director what to do…"></textarea>
-      <button id="send" class="primary">Send</button>
-    </div>
-  </aside>
+  <aside class="right"><div class="directorHead"><div><b>ASSISTANT</b><small id="modeLabel">MANUAL · CONVERSATION SAFE</small></div><span class="dot" id="aiDot"></span></div><div id="activity" class="activity"><div class="message ai">I can talk normally while you edit. Switch Director on only when you want me to propose or perform timeline actions.</div></div><div class="proposal" id="proposal" hidden><b>Proposed timeline change</b><span id="proposalText"></span><small id="proposalOps"></small><div><button id="reject">Reject</button><button id="approve" class="primary">Apply</button></div></div><div class="selectionCard"><small>SELECTED CLIP</small><b id="selectedClip">None</b><span id="selectedClipMeta">Select a timeline clip to inspect it.</span></div></aside>
 </main>
-
-<section class="timeline">
-  <div class="timelineTop">
-    <b>TIMELINE</b>
-    <span id="status">0 scenes · 0 learned decisions · 0 cuts</span>
-  </div>
-  <div id="ruler" class="ruler"></div>
-  <div class="track"><label>V2 Graphics</label><div class="lane" id="gLane"></div></div>
-  <div class="track"><label>V1 Video</label><div class="lane" id="vLane"></div></div>
-  <div class="track"><label>A1 Dialogue</label><div class="lane" id="aLane"></div></div>
-  <div class="track"><label>C1 Captions</label><div class="lane" id="cLane"></div></div>
-</section>
-
-<script src="app.js"></script>
+<section class="timeline"><div class="timelineTop"><div><b>TIMELINE</b><button id="addVideoTrack">+ V Track</button><button id="addAudioTrack">+ A Track</button></div><span id="status">0 tracks · 0 learned decisions · autosave idle</span></div><div id="ruler" class="ruler"></div><div id="tracks" class="tracks"></div></section>
+<div class="floatingComposer" id="floatingComposer"><div id="attachmentChips" class="attachmentChips"></div><div class="composerRow"><button id="attach" class="plusButton" title="Attach files, documents, images, audio or video">+</button><textarea id="prompt" placeholder="Talk to DirectorCut or ask it to edit…"></textarea><button id="send" class="sendButton" title="Send">↑</button></div><div class="composerFooter"><span id="composerMode">Manual · chat & advice</span><span id="autosaveState">Autosave ready</span></div></div>
+<script src="timeline-engine.js"></script><script src="app.js"></script>
 </body>
 </html>
