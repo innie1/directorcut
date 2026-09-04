@@ -41,16 +41,9 @@
 
 <main>
   <aside class="left">
-    <div class="panelTitle">LIBRARY</div>
-    <nav class="libraryNav">
-      <button class="nav active"><span>▣</span> Media</button>
-      <button class="nav"><span>T</span> Text</button>
-      <button class="nav"><span>♪</span> Audio</button>
-      <button class="nav"><span>CC</span> Captions</button>
-      <button class="nav"><span>✦</span> Effects</button>
-    </nav>
+    <div class="panelTitle">PROJECT</div>
 
-    <div class="librarySection">
+    <div class="librarySection firstSection">
       <div class="sectionHeading"><strong>Media</strong><button id="addMedia" class="miniButton">＋ Add</button></div>
       <button id="pickVideo" class="wideImport">Import primary video</button>
       <input id="videoInput" type="file" accept="video/*">
@@ -112,7 +105,7 @@
       </details>
     </div>
 
-    <details class="transcriptPanel" open>
+    <details class="transcriptPanel">
       <summary class="transcriptSummary"><span><b>Script & Transcript</b><small id="transcriptMode">SCRIPT</small></span><span class="transcriptSearch"><input id="search" placeholder="Find spoken words…"><button id="searchBtn">Find</button></span></summary>
       <div id="transcript" contenteditable="true">Import a script or transcribe your footage. Click here to write or edit text.</div>
     </details>
