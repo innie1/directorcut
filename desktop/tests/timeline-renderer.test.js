@@ -18,7 +18,14 @@ const { buildRenderPlan, buildFilterGraph, renderTimelineProject } = require('..
         fps:30,
         tracks:[
           { id:'V1', kind:'video', clips:[
-            { id:'v1', sourcePath:a, start:0, duration:1.5, sourceIn:.2, sourceDuration:2.5, keyframes:{ scale:[{time:0,value:1},{time:1.4,value:1.15}], opacity:[{time:0,value:1},{time:1.4,value:.8}], x:[{time:0,value:8}], y:[{time:0,value:-4}], rotation:[{time:0,value:3}], speed:[{time:0,value:1.2}] } },
+            { id:'v1', sourcePath:a, start:0, duration:1.5, sourceIn:.2, sourceDuration:2.5,
+              keyframes:{ scale:[{time:0,value:1},{time:1.4,value:1.15}], opacity:[{time:0,value:1},{time:1.4,value:.8}], x:[{time:0,value:8}], y:[{time:0,value:-4}], rotation:[{time:0,value:3}], speed:[{time:0,value:1.2}] },
+              effects:[
+                {id:'color',type:'color',enabled:true,params:{exposure:.8,contrast:1.15,saturation:1.2,temperature:25,tint:-12}},
+                {id:'blur',type:'blur',enabled:true,params:{radius:1}},
+                {id:'sharpen',type:'sharpen',enabled:true,params:{amount:.35}},
+                {id:'vignette',type:'vignette',enabled:true,params:{amount:.25}}
+              ] },
             { id:'v2', sourcePath:b, start:1.5, duration:1.5, sourceIn:.1, sourceDuration:2.5, keyframes:{} }
           ] },
           { id:'V2', kind:'video', clips:[
@@ -50,6 +57,11 @@ const { buildRenderPlan, buildFilterGraph, renderTimelineProject } = require('..
     const graph = buildFilterGraph(plan).graph;
     assert(graph.includes('split=2')); // source B is used by two video clips
     assert(graph.includes('[0:a]anull') && graph.includes('[1:a]anull')); // audio clips come from distinct sources
+    assert(graph.includes('eq=brightness='));
+    assert(graph.includes('colorchannelmixer='));
+    assert(graph.includes('gblur=sigma='));
+    assert(graph.includes('unsharp=5:5:'));
+    assert(graph.includes('vignette=angle='));
     assert(graph.includes('zoompan'));
     assert(graph.includes('geq='));
     assert(graph.includes('rotate=angle='));
