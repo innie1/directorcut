@@ -72,7 +72,7 @@ std::vector<std::string> split_tabs(const std::string& line) {
     std::stringstream stream(line);
     std::string part;
     while (std::getline(stream, part, '\t')) fields.push_back(part);
-    // std::getline omits trailing empty fields, but V2 clip records intentionally
+    // std::getline omits trailing empty fields, but V2/V3 clip records intentionally
     // contain empty Inspector columns. Restore them from trailing tabs.
     std::size_t trailing = 0;
     for (auto it = line.rbegin(); it != line.rend() && *it == '\t'; ++it) ++trailing;
@@ -87,11 +87,13 @@ bool parse_manifest(const std::string& file, ManifestSpec& manifest, std::string
         return false;
     }
     std::string line;
-    if (!std::getline(input, line) || (line != "DIRECTORCUT_TIMELINE_V1" && line != "DIRECTORCUT_TIMELINE_V2")) {
+    if (!std::getline(input, line) ||
+        (line != "DIRECTORCUT_TIMELINE_V1" && line != "DIRECTORCUT_TIMELINE_V2" && line != "DIRECTORCUT_TIMELINE_V3")) {
         error = "Unsupported DirectorCut timeline manifest";
         return false;
     }
-    const bool v2 = line == "DIRECTORCUT_TIMELINE_V2";
+    const bool v2plus = line == "DIRECTORCUT_TIMELINE_V2" || line == "DIRECTORCUT_TIMELINE_V3";
+    const bool v3 = line == "DIRECTORCUT_TIMELINE_V3";
     while (std::getline(input, line)) {
         if (line.empty()) continue;
         const auto fields = split_tabs(line);
@@ -118,7 +120,7 @@ bool parse_manifest(const std::string& file, ManifestSpec& manifest, std::string
             clip.duration = static_cast<GstClockTime>(std::stoull(fields[5]));
             clip.path = percent_decode(fields[6]);
             clip.id = fields.size() > 7 ? percent_decode(fields[7]) : std::string();
-            if (v2 && fields.size() >= 16) {
+            if (v2plus && fields.size() >= 16) {
                 clip.inspector.x = directorcut_monitor::parse_points(fields[9], percent_decode_ref);
                 clip.inspector.y = directorcut_monitor::parse_points(fields[10], percent_decode_ref);
                 clip.inspector.scale = directorcut_monitor::parse_points(fields[11], percent_decode_ref);
@@ -126,6 +128,16 @@ bool parse_manifest(const std::string& file, ManifestSpec& manifest, std::string
                 clip.inspector.opacity = directorcut_monitor::parse_points(fields[13], percent_decode_ref);
                 clip.inspector.speed = directorcut_monitor::parse_points(fields[14], percent_decode_ref);
                 clip.inspector.volume = directorcut_monitor::parse_points(fields[15], percent_decode_ref);
+            }
+            if (v3 && fields.size() >= 24) {
+                clip.inspector.effects.exposure = std::stod(fields[16]);
+                clip.inspector.effects.contrast = std::stod(fields[17]);
+                clip.inspector.effects.saturation = std::stod(fields[18]);
+                clip.inspector.effects.temperature = std::stod(fields[19]);
+                clip.inspector.effects.tint = std::stod(fields[20]);
+                clip.inspector.effects.blur = std::stod(fields[21]);
+                clip.inspector.effects.sharpen = std::stod(fields[22]);
+                clip.inspector.effects.vignette = std::stod(fields[23]);
             }
             if (!clip.path.empty() && clip.duration > 0) manifest.clips.push_back(std::move(clip));
         } catch (const std::exception& ex) {
