@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('directorcut', {
   pickManyMedia: () => ipcRenderer.invoke('media:pick-many'),
   pickAttachments: () => ipcRenderer.invoke('attachment:pick'),
   pickScript: () => ipcRenderer.invoke('script:pick'),
+  pickLut: () => ipcRenderer.invoke('lut:pick'),
   openProject: () => ipcRenderer.invoke('project:open'),
   saveProject,
   autosaveProject: project => ipcRenderer.invoke('project:autosave', project),
