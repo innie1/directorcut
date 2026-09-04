@@ -176,6 +176,14 @@ class NativeProgramMonitor {
     if (!info.available) return { ok:false, ...info };
     const manifest = buildTimelineManifest(project);
     if (!manifest.clips) return { ok:false, available:true, reason:'The timeline has no playable media clips.' };
+    if (manifest.transitions > 0 && !manifest.nativeTransitionSafe) {
+      await this.stop();
+      return {
+        ok:false,
+        available:true,
+        reason:'This timeline contains a transition style that native GES preview cannot represent accurately yet. DirectorCut kept the source preview instead of showing the wrong transition.'
+      };
+    }
 
     const previousBounds = this.lastBounds;
     await this.stop();
@@ -264,6 +272,7 @@ class NativeProgramMonitor {
         clips:manifest.clips,
         videoClips:manifest.videoClips,
         audioClips:manifest.audioClips,
+        transitions:manifest.transitions,
         duration:manifest.duration
       };
     } catch (error) {
