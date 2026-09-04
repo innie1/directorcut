@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('directorcut', {
   desktop: true,
   pickMedia: () => ipcRenderer.invoke('media:pick'),
+  pickManyMedia: () => ipcRenderer.invoke('media:pick-many'),
   pickAttachments: () => ipcRenderer.invoke('attachment:pick'),
   pickScript: () => ipcRenderer.invoke('script:pick'),
   openProject: () => ipcRenderer.invoke('project:open'),
