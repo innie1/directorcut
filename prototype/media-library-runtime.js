@@ -1,6 +1,7 @@
 // Professional media-bin workflow: import never replaces the edit; adding to timeline is deliberate.
 (() => {
   const MU = window.DirectorMediaLibraryUtils;
+  const FI = window.DirectorFootageIntelligence;
   const TL = window.DirectorTimeline;
   const bin = document.querySelector('#mediaBin');
   const pick = document.querySelector('#pickVideo');
@@ -11,6 +12,7 @@
 
   state.mediaLibrary = MU.normalizeLibrary(state.mediaLibrary || (state.media ? [state.media] : []));
   state.selectedLibraryId = state.selectedLibraryId || state.mediaLibrary[0]?.libraryId || null;
+  const analyzing = new Set();
 
   const hasTimelineVideo = () => (state.timeline?.tracks || []).some(t => t.kind === 'video' && (t.clips || []).length);
   const toast = text => typeof window.DirectorCutEditorToast === 'function' ? window.DirectorCutEditorToast(text) : null;
@@ -18,6 +20,15 @@
     const duration = Number(media.duration || 0);
     const dims = media.width && media.height ? `${media.width}×${media.height}` : 'video';
     return `${typeof tc === 'function' ? tc(duration) : `${duration.toFixed(1)}s`} · ${dims}`;
+  };
+  const intelligenceText = media => {
+    const summary=media?.intelligence?.summary;if(!summary)return'';
+    const parts=[`${summary.sceneCount||0} shot${summary.sceneCount===1?'':'s'}`];
+    if(summary.silenceSeconds>0)parts.push(`${Number(summary.silenceSeconds).toFixed(1)}s silence`);
+    const duplicates=(summary.duplicateScenes||0)+(summary.nearDuplicateScenes||0);if(duplicates)parts.push(`${duplicates} duplicate${duplicates===1?'':'s'}`);
+    if(summary.flaggedScenes)parts.push(`${summary.flaggedScenes} flagged`);
+    if(Number.isFinite(summary.averageQuality))parts.push(`quality ${summary.averageQuality}/100`);
+    return parts.join(' · ');
   };
   const libraryItem = id => state.mediaLibrary.find(item => item.libraryId === id) || null;
 
@@ -55,6 +66,21 @@
     toast(mode === 'insert' ? `Inserted ${media.name} at playhead` : `Added ${media.name} to timeline`);
   }
 
+  async function analyzeMediaItem(media){
+    if(!media?.path||!window.directorcut?.desktop||typeof window.directorcut.analyzeMedia!=='function'){toast('Footage analysis requires a local desktop media file.');return;}
+    if(analyzing.has(media.libraryId))return;
+    analyzing.add(media.libraryId);renderLibrary();toast(`Analyzing ${media.name} locally…`);
+    try{
+      const intelligence=await window.directorcut.analyzeMedia({sourcePath:media.path,sceneThreshold:.30,noiseDb:-35,minSilence:.35,maxQualitySamples:32,sampleSize:16});
+      media.intelligence=FI?.normalizeAnalysis?FI.normalizeAnalysis(intelligence):intelligence;
+      const active=state.mediaLibrary.find(item=>item.libraryId===media.libraryId);if(active&&active!==media)active.intelligence=media.intelligence;
+      if(state.media?.libraryId===media.libraryId||state.media?.path===media.path)state.media.intelligence=media.intelligence;
+      if(typeof markDirty==='function')markDirty();
+      const summary=intelligenceText(media);toast(summary?`Analysis ready · ${summary}`:`Analysis ready for ${media.name}`);
+    }catch(error){toast(`Analysis failed: ${error.message||error}`);}
+    finally{analyzing.delete(media.libraryId);renderLibrary();}
+  }
+
   function renderLibrary() {
     bin.innerHTML = '';
     if (!state.mediaLibrary.length) {
@@ -66,12 +92,14 @@
     }
     for (const media of state.mediaLibrary) {
       const card = document.createElement('article');
-      card.className = `mediaLibraryItem${state.selectedLibraryId === media.libraryId ? ' selected' : ''}`;
+      card.className = `mediaLibraryItem${state.selectedLibraryId === media.libraryId ? ' selected' : ''}${media.intelligence ? ' analyzed' : ''}`;
       card.dataset.mediaId = media.libraryId;
       card.draggable = true;
-      card.innerHTML = `<div class="mediaLibraryThumb"><span>▶</span></div><div class="mediaLibraryText"><strong></strong><small></small></div><div class="mediaLibraryActions"><button type="button" data-media-action="append" title="Append to end of timeline">＋ Add</button><button type="button" data-media-action="insert" title="Insert at playhead and move later clips">Insert</button><button type="button" data-media-action="preview" title="Preview this source without changing the timeline">Preview</button></div>`;
+      card.innerHTML = `<div class="mediaLibraryThumb"><span>▶</span></div><div class="mediaLibraryText"><strong></strong><small class="mediaMeta"></small><small class="mediaIntelligence" hidden></small></div><div class="mediaLibraryActions"><button type="button" data-media-action="append" title="Append to end of timeline">＋ Add</button><button type="button" data-media-action="insert" title="Insert at playhead and move later clips">Insert</button><button type="button" data-media-action="preview" title="Preview this source without changing the timeline">Preview</button><button type="button" data-media-action="analyze" title="Analyze shots, silence, duplicates and quality locally">Analyze</button></div>`;
       card.querySelector('strong').textContent = media.name || 'Untitled video';
-      card.querySelector('small').textContent = meta(media);
+      card.querySelector('.mediaMeta').textContent = meta(media);
+      const intelligence=card.querySelector('.mediaIntelligence'),summary=intelligenceText(media);if(summary){intelligence.textContent=`✦ ${summary}`;intelligence.hidden=false;}
+      const analyzeButton=card.querySelector('[data-media-action="analyze"]');if(analyzing.has(media.libraryId)){analyzeButton.textContent='Analyzing…';analyzeButton.disabled=true;}else if(media.intelligence)analyzeButton.textContent='Re-analyze';
       card.onclick = event => {
         if (event.target.closest('button')) return;
         state.selectedLibraryId = media.libraryId;
@@ -84,6 +112,7 @@
       card.querySelector('[data-media-action="append"]').onclick = () => addMediaToTimeline(media, 'append');
       card.querySelector('[data-media-action="insert"]').onclick = () => addMediaToTimeline(media, 'insert');
       card.querySelector('[data-media-action="preview"]').onclick = () => setActiveSource(media, true);
+      analyzeButton.onclick=()=>analyzeMediaItem(media);
       card.addEventListener('dragstart', event => {
         event.dataTransfer.effectAllowed = 'copy';
         event.dataTransfer.setData('application/x-directorcut-media', media.libraryId);
@@ -199,4 +228,5 @@
   }
 
   renderLibrary();
+  window.DirectorCutMediaLibraryRuntime={renderLibrary,analyzeMediaItem,intelligenceText};
 })();
