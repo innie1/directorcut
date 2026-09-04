@@ -1,4 +1,4 @@
-param([switch]$InstallAI)
+param([switch]$InstallAI, [switch]$BuildNativePlayback)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Write-Host "DirectorCut setup" -ForegroundColor Cyan
@@ -26,8 +26,15 @@ if ($InstallAI) {
   python -m pip install -r (Join-Path $root "requirements-ai.txt")
 }
 
+if ($BuildNativePlayback) {
+  & (Join-Path $PSScriptRoot "build-native-playback.ps1")
+}
+
 Write-Host "Setup complete." -ForegroundColor Green
 Write-Host "Run: .\scripts\run-windows.ps1"
 if (-not $InstallAI) {
   Write-Host "For local Whisper later: .\scripts\setup-windows.ps1 -InstallAI"
+}
+if (-not $BuildNativePlayback) {
+  Write-Host "For native GStreamer/GES timeline preview: .\scripts\setup-windows.ps1 -BuildNativePlayback"
 }
