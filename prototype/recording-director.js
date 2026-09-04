@@ -1,10 +1,12 @@
 // Stage 7 Recording Director: scene-by-scene local camera/microphone capture with
-// streamed chunks, persistent takes and a teleprompter. Recording is deliberately
-// separate from the timeline; accepted takes enter the Media Library first.
+// streamed chunks, persistent takes, teleprompter, script/take alignment and safe rough-cut assembly.
 (() => {
   const RS = window.DirectorRecordingSession;
+  const RA = window.DirectorRecordingAssembly;
+  const MU = window.DirectorMediaLibraryUtils;
+  const TL = window.DirectorTimeline;
   const openButton = document.querySelector('#recordDirector');
-  if (!RS || !openButton) return;
+  if (!RS || !RA || !MU || !TL || !openButton) return;
 
   const desktop = Boolean(window.directorcut?.desktop);
   let mediaStream = null;
@@ -19,6 +21,7 @@
   let lastCandidate = null;
 
   state.recordingSession = state.recordingSession || null;
+  state.recordingAssemblies = Array.isArray(state.recordingAssemblies) ? state.recordingAssemblies : [];
 
   const overlay = document.createElement('div');
   overlay.id = 'recordingDirectorOverlay';
@@ -56,6 +59,7 @@
             <button type="button" id="recordingAccept" class="recordingAccept" disabled>Accept & Next</button>
             <button type="button" id="recordingRetake" disabled>Retake</button>
             <button type="button" id="recordingReject" disabled>Reject</button>
+            <button type="button" id="recordingAssemble" class="recordingAssemble" disabled>Assemble accepted takes</button>
           </div>
 
           <section class="recordingReview">
@@ -77,7 +81,7 @@
             <button type="button" id="recordingSkipScene">Skip scene</button>
             <button type="button" id="recordingNextScene">Next →</button>
           </div>
-          <div class="recordingSessionNote">Closing this workspace stops the camera but keeps the recording session and completed takes. Reopen Recording Director to continue.</div>
+          <div id="recordingAlignmentNote" class="recordingSessionNote">Accepted takes remain tied to their script scenes. Assembly appends a reversible rough cut and never replaces the existing timeline.</div>
         </section>
       </div>
     </section>`;
@@ -93,6 +97,7 @@
   const acceptButton = $('#recordingAccept');
   const retakeButton = $('#recordingRetake');
   const rejectButton = $('#recordingReject');
+  const assembleButton = $('#recordingAssemble');
   const takePreview = $('#recordingTakePreview');
   const promptScroller = $('#recordingPromptScroller');
   const promptText = $('#recordingPromptText');
@@ -110,6 +115,7 @@
     }
     return [...(scene.takes || [])].reverse().find(take => take.status === 'candidate') || null;
   };
+  const alreadyAssembled = fingerprint => state.recordingAssemblies.some(item => item?.sessionId === state.recordingSession?.id && item?.fingerprint === fingerprint);
 
   function setStatus(text, kind = '') {
     statusEl.textContent = text;
@@ -243,12 +249,11 @@
       acceptButton.disabled = true;
       retakeButton.disabled = true;
       rejectButton.disabled = true;
+      assembleButton.disabled = true;
       $('#recordingPrevScene').disabled = true;
       $('#recordingNextScene').disabled = true;
       $('#recordingSkipScene').disabled = true;
-    } else if (state.recordingSession) {
-      queueMicrotask(renderSession);
-    }
+    } else if (state.recordingSession) queueMicrotask(renderSession);
   }
 
   async function startRecording() {
@@ -363,22 +368,24 @@
 
   function addAcceptedToLibrary(scene, take) {
     if (!take?.media) return;
-    const runtime = window.DirectorCutMediaLibraryRuntime;
-    const media = { ...take.media, source:'recording', recording:{ ...(take.media.recording || {}), accepted:true } };
-    runtime?.addLibraryItems?.([media], { select:true, preview:false });
+    const item = RA.alignment(state.recordingSession).find(row => row.sceneId === scene.sceneId && row.takeId === take.id);
+    const media = item ? RA.alignedMedia(item, state.recordingSession) : { ...take.media, source:'recording' };
+    window.DirectorCutMediaLibraryRuntime?.addLibraryItems?.([media], { select:true, preview:false });
   }
 
   function acceptTake(sceneId, takeId, advance = true) {
     const before = state.recordingSession?.scenes?.find(scene => scene.sceneId === sceneId);
     const take = before?.takes?.find(item => item.id === takeId);
     if (!before || !take || activeRecording) return;
-    addAcceptedToLibrary(before, take);
     state.recordingSession = RS.acceptTake(state.recordingSession, sceneId, takeId, { advance });
+    const alignedScene = state.recordingSession.scenes.find(scene => scene.sceneId === sceneId);
+    const alignedTake = alignedScene?.takes.find(item => item.id === takeId) || take;
+    addAcceptedToLibrary(alignedScene || before, alignedTake);
     lastCandidate = null;
     promptScroller.scrollTop = 0;
     if (typeof markDirty === 'function') markDirty();
     renderSession();
-    toast?.(`Accepted Scene ${before.index + 1} Take ${take.takeNumber} · added to Media Library`);
+    toast?.(`Accepted Scene ${before.index + 1} Take ${take.takeNumber} · aligned to script and added to Media Library`);
   }
 
   function rejectTake(sceneId, takeId) {
@@ -394,6 +401,50 @@
     const scene = currentScene(), candidate = candidateForScene(scene);
     if (candidate) rejectTake(scene.sceneId, candidate.id);
     await startRecording();
+  }
+
+  function assembleAcceptedTakes() {
+    if (activeRecording || !state.recordingSession) return false;
+    const summary = RA.summary(state.recordingSession);
+    if (!summary.ready) {
+      const detail = summary.missing ? `${summary.missing} required scene${summary.missing===1?'':'s'} still need accepted takes.` : 'No accepted takes are ready.';
+      setStatus(detail, 'warning');
+      return false;
+    }
+    if (alreadyAssembled(summary.fingerprint)) {
+      setStatus('This exact accepted-take set is already assembled.', 'ready');
+      return false;
+    }
+    const start = Math.max(0, Number(TL.duration(state.timeline) || 0));
+    const plan = RA.plan(state.recordingSession, start);
+    if (!plan.items.length) return false;
+    if (typeof pushUndo === 'function') pushUndo();
+    const assemblyId = `assembly-${Date.now().toString(36)}`;
+    const clipIds=[];
+    for (const item of plan.items) {
+      const media = RA.alignedMedia(item, state.recordingSession);
+      window.DirectorCutMediaLibraryRuntime?.addLibraryItems?.([media], { select:false, preview:false });
+      const seed = `${assemblyId}-${String(item.sceneNumber).padStart(3,'0')}-${item.takeId}`;
+      state.timeline = MU.appendMedia(state.timeline, media, { idSeed:seed });
+      for (const id of [`${seed}-v`,`${seed}-a`]) {
+        const found = TL.findClip(state.timeline,id);
+        if (!found) continue;
+        found.clip.recordingAlignment = RA.clipAlignment(item,state.recordingSession);
+        found.clip.assemblyId = assemblyId;
+        clipIds.push(id);
+      }
+    }
+    state.recordingAssemblies.push({
+      id:assemblyId,sessionId:state.recordingSession.id,fingerprint:plan.fingerprint,assembledAt:new Date().toISOString(),
+      start, end:Number(TL.duration(state.timeline)||plan.end), takeIds:plan.items.map(item=>item.takeId), sceneIds:plan.items.map(item=>item.sceneId), clipIds
+    });
+    if (state.recordingAssemblies.length>50) state.recordingAssemblies.splice(0,state.recordingAssemblies.length-50);
+    if (typeof markDirty === 'function') markDirty();
+    if (typeof renderTimeline === 'function') renderTimeline();
+    renderSession();
+    setStatus(`Assembled ${plan.items.length} accepted take${plan.items.length===1?'':'s'} at ${typeof tc==='function'?tc(start):`${start.toFixed(1)}s`}.`, 'ready');
+    toast?.(`Rough cut assembled · ${plan.items.length} scene${plan.items.length===1?'':'s'} · Undo is available`);
+    return true;
   }
 
   function renderSceneList() {
@@ -434,10 +485,13 @@
 
   function renderSession() {
     if (!state.recordingSession) return;
-    const scene = currentScene(), progress = RS.progress(state.recordingSession), locked = Boolean(activeRecording);
+    const scene = currentScene(), progress = RS.progress(state.recordingSession), locked = Boolean(activeRecording), assembly = RA.summary(state.recordingSession), assembled=alreadyAssembled(assembly.fingerprint);
     $('#recordingProgressText').textContent = `${progress.complete + progress.skipped} / ${progress.total} scenes · ${progress.percent}%`;
     $('#recordingProgressBar').style.width = `${progress.percent}%`;
     renderSceneList();
+    assembleButton.disabled = locked || !assembly.ready || assembled;
+    assembleButton.textContent = assembled ? '✓ Rough cut assembled' : assembly.ready ? `Assemble ${assembly.accepted} accepted take${assembly.accepted===1?'':'s'}` : `Assemble · ${assembly.missing} scene${assembly.missing===1?'':'s'} missing`;
+    $('#recordingAlignmentNote').textContent = assembled ? 'This accepted-take set is already on the timeline. Change an accepted take to create a new assembly version.' : assembly.ready ? 'All required scenes are aligned. Assembly appends them in script order and is undoable.' : 'Accepted takes remain tied to their script scenes. Skip a scene or accept a take for every required scene before assembly.';
     if (!scene) return;
     $('#recordingSceneNumber').textContent = `SCENE ${scene.index + 1} OF ${state.recordingSession.scenes.length}`;
     $('#recordingScenePurpose').textContent = scene.purpose || `Scene ${scene.index + 1}`;
@@ -456,7 +510,7 @@
       lastCandidate = { sceneId:scene.sceneId, takeId:candidate.id };
     } else if (scene.acceptedTakeId) {
       const accepted = scene.takes.find(take => take.id === scene.acceptedTakeId);
-      $('#recordingReviewLabel').textContent = accepted ? `Take ${accepted.takeNumber} accepted for this scene.` : 'Scene complete.';
+      $('#recordingReviewLabel').textContent = accepted ? `Take ${accepted.takeNumber} accepted and aligned to Scene ${scene.index + 1}.` : 'Scene complete.';
     } else $('#recordingReviewLabel').textContent = 'No candidate take waiting for approval.';
   }
 
@@ -498,6 +552,7 @@
   acceptButton.onclick = () => { const scene=currentScene(),candidate=candidateForScene(scene);if(candidate)acceptTake(scene.sceneId,candidate.id,true); };
   retakeButton.onclick = retakeCurrent;
   rejectButton.onclick = () => { const scene=currentScene(),candidate=candidateForScene(scene);if(candidate)rejectTake(scene.sceneId,candidate.id); };
+  assembleButton.onclick = assembleAcceptedTakes;
   $('#recordingPrevScene').onclick = () => { const scene=currentScene();if(scene&&!activeRecording) { state.recordingSession=RS.setActiveScene(state.recordingSession,scene.index-1);lastCandidate=null;promptScroller.scrollTop=0;renderSession(); } };
   $('#recordingNextScene').onclick = () => { const scene=currentScene();if(scene&&!activeRecording) { state.recordingSession=RS.setActiveScene(state.recordingSession,scene.index+1);lastCandidate=null;promptScroller.scrollTop=0;renderSession(); } };
   $('#recordingSkipScene').onclick = () => { const scene=currentScene();if(scene&&!activeRecording){state.recordingSession=RS.skipScene(state.recordingSession,scene.sceneId);lastCandidate=null;promptScroller.scrollTop=0;if(typeof markDirty==='function')markDirty();renderSession();} };
@@ -508,6 +563,7 @@
     projectObject = function (...args) {
       const project = baseProjectObject.apply(this, args);
       project.recordingSession = state.recordingSession ? clone(state.recordingSession) : null;
+      project.recordingAssemblies = clone(state.recordingAssemblies || []);
       return project;
     };
   }
@@ -516,6 +572,7 @@
     loadProjectObject = function (project, ...rest) {
       const result = baseLoadProject.call(this, project, ...rest);
       state.recordingSession = project?.recordingSession ? RS.normalizeSession(project.recordingSession, { projectName:project.name, scenes:state.scenes, script:state.script }) : null;
+      state.recordingAssemblies = Array.isArray(project?.recordingAssemblies) ? clone(project.recordingAssemblies) : [];
       return result;
     };
   }
@@ -532,5 +589,5 @@
   });
 
   if (!desktop) openButton.disabled = true;
-  window.DirectorCutRecordingDirector = { open:openRecordingDirector, close:closeRecordingDirector, startCamera, startRecording, stopRecording, renderSession };
+  window.DirectorCutRecordingDirector = { open:openRecordingDirector, close:closeRecordingDirector, startCamera, startRecording, stopRecording, assembleAcceptedTakes, renderSession };
 })();
