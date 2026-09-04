@@ -1,0 +1,6 @@
+.transitionBadge,.transitionAdd{position:absolute;z-index:8;top:4px;height:calc(100% - 8px);border:1px solid rgba(255,255,255,.24);background:rgba(35,47,66,.9);color:#e8eef7;border-radius:7px;font-size:10px;line-height:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 7px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.transitionBadge:hover,.transitionBadge.selected{border-color:#80b6ff;background:rgba(43,66,99,.96)}
+.transitionAdd{width:22px!important;min-width:22px;transform:translateX(-11px);padding:0;border-radius:50%;background:#101923;color:#9ec8ff;opacity:.18;transition:opacity .12s ease,transform .12s ease}
+.lane:hover .transitionAdd{opacity:.88}.transitionAdd:hover{opacity:1;transform:translateX(-11px) scale(1.08)}
+.transitionInspectorSection select{width:100%;min-width:0;background:#111923;color:#e9edf4;border:1px solid #293544;border-radius:7px;padding:8px}
+.transitionInspectorSection .inspectorHint{display:block;line-height:1.35}
