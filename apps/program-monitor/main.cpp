@@ -3,12 +3,10 @@
 #include <gst/video/videooverlay.h>
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -111,7 +109,7 @@ class TimelinePlayer {
 public:
     ~TimelinePlayer() { reset(); }
 
-    bool load(const std::string& manifest, std::uint64_t window_handle, std::string& error) {
+    bool load(const std::string& manifest, std::uint64_t window_handle, bool headless, std::string& error) {
         reset();
         window_handle_ = window_handle;
 
@@ -154,14 +152,8 @@ public:
             }
             GError* add_error = nullptr;
             GESClip* added = ges_layer_add_asset_full(
-                layers.at(clip.layer),
-                GES_ASSET(asset),
-                clip.start,
-                clip.inpoint,
-                clip.duration,
-                clip.type,
-                &add_error);
-            gst_object_unref(asset);
+                layers.at(clip.layer), GES_ASSET(asset), clip.start, clip.inpoint, clip.duration, clip.type, &add_error);
+            g_object_unref(asset);
             if (!added) {
                 error = add_error ? add_error->message : "GES could not add clip to timeline";
                 if (add_error) g_error_free(add_error);
@@ -169,10 +161,9 @@ public:
             }
         }
 
-        if (!ges_timeline_commit(timeline_)) {
-            error = "GES timeline commit failed";
-            return false;
-        }
+        // Synchronous commit guarantees that READY later really means the GES graph
+        // reflects the timeline supplied by DirectorCut.
+        ges_timeline_commit_sync(timeline_);
 
         pipeline_ = ges_pipeline_new();
         if (!pipeline_) {
@@ -181,28 +172,33 @@ public:
         }
 
         GstElement* video_sink = nullptr;
+        GstElement* audio_sink = nullptr;
+        if (headless) {
+            video_sink = gst_element_factory_make("fakesink", "directorcut-video-sink");
+            audio_sink = gst_element_factory_make("fakesink", "directorcut-audio-sink");
+        } else {
 #ifdef _WIN32
-        video_sink = gst_element_factory_make("d3d11videosink", "directorcut-video-sink");
-        if (!video_sink) video_sink = gst_element_factory_make("d3d12videosink", "directorcut-video-sink");
+            video_sink = gst_element_factory_make("d3d11videosink", "directorcut-video-sink");
+            if (!video_sink) video_sink = gst_element_factory_make("d3d12videosink", "directorcut-video-sink");
 #endif
-        if (!video_sink) video_sink = gst_element_factory_make("glimagesink", "directorcut-video-sink");
-        if (!video_sink) video_sink = gst_element_factory_make("autovideosink", "directorcut-video-sink");
+            if (!video_sink) video_sink = gst_element_factory_make("glimagesink", "directorcut-video-sink");
+            if (!video_sink) video_sink = gst_element_factory_make("autovideosink", "directorcut-video-sink");
+            audio_sink = gst_element_factory_make("autoaudiosink", "directorcut-audio-sink");
+        }
         if (video_sink) {
             ges_pipeline_preview_set_video_sink(pipeline_, video_sink);
-            gst_object_unref(video_sink);
+            g_object_unref(video_sink);
         }
-
-        GstElement* audio_sink = gst_element_factory_make("autoaudiosink", "directorcut-audio-sink");
         if (audio_sink) {
             ges_pipeline_preview_set_audio_sink(pipeline_, audio_sink);
-            gst_object_unref(audio_sink);
+            g_object_unref(audio_sink);
         }
 
         if (!ges_pipeline_set_timeline(pipeline_, timeline_)) {
             error = "GES could not attach timeline to preview pipeline";
             return false;
         }
-        timeline_ = nullptr; // ownership transferred to the GES pipeline
+        timeline_ = nullptr; // the pipeline owns the floating timeline reference
 
         if (!ges_pipeline_set_mode(pipeline_, GES_PIPELINE_MODE_PREVIEW)) {
             error = "GES could not enable preview mode";
@@ -210,11 +206,19 @@ public:
         }
 
         GstBus* bus = gst_element_get_bus(GST_ELEMENT(pipeline_));
-        gst_bus_set_sync_handler(bus, bus_sync_handler, &window_handle_, nullptr);
+        if (!headless) gst_bus_set_sync_handler(bus, bus_sync_handler, &window_handle_, nullptr);
         gst_object_unref(bus);
 
-        if (gst_element_set_state(GST_ELEMENT(pipeline_), GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE) {
-            error = "GES preview pipeline could not preroll";
+        const GstStateChangeReturn state = gst_element_set_state(GST_ELEMENT(pipeline_), GST_STATE_PAUSED);
+        if (state == GST_STATE_CHANGE_FAILURE) {
+            error = "GES preview pipeline could not enter PAUSED state";
+            return false;
+        }
+        GstState current = GST_STATE_NULL;
+        GstState pending = GST_STATE_VOID_PENDING;
+        const GstStateChangeReturn preroll = gst_element_get_state(GST_ELEMENT(pipeline_), &current, &pending, 8 * GST_SECOND);
+        if (preroll == GST_STATE_CHANGE_FAILURE || current < GST_STATE_PAUSED) {
+            error = "GES preview pipeline did not preroll";
             return false;
         }
         return true;
@@ -237,7 +241,6 @@ public:
         gint64 value = 0;
         return gst_element_query_duration(GST_ELEMENT(pipeline_), GST_FORMAT_TIME, &value) && value > 0 ? static_cast<std::uint64_t>(value) : 0;
     }
-    bool loaded() const { return pipeline_ != nullptr; }
 
 private:
     void reset() {
@@ -257,9 +260,7 @@ private:
     std::uint64_t window_handle_ = 0;
 };
 
-void print_line(const std::string& line) {
-    std::cout << line << std::endl;
-}
+void print_line(const std::string& line) { std::cout << line << std::endl; }
 
 } // namespace
 
@@ -272,10 +273,12 @@ int main(int argc, char** argv) {
 
     std::string manifest;
     std::uint64_t window_handle = 0;
+    bool headless = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--manifest" && i + 1 < argc) manifest = argv[++i];
         else if (arg == "--window-handle" && i + 1 < argc) window_handle = std::strtoull(argv[++i], nullptr, 10);
+        else if (arg == "--headless") headless = true;
     }
     if (manifest.empty()) {
         std::cerr << "ERROR\tMissing --manifest" << std::endl;
@@ -284,7 +287,7 @@ int main(int argc, char** argv) {
 
     TimelinePlayer player;
     std::string error;
-    if (!player.load(manifest, window_handle, error)) {
+    if (!player.load(manifest, window_handle, headless, error)) {
         std::cerr << "ERROR\t" << error << std::endl;
         return 3;
     }
