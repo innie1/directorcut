@@ -8,6 +8,7 @@ const { renderCuts, wordsToSrt } = require('./media-utils');
 const { renderTimelineProject } = require('./timeline-renderer-stage4');
 const { analyzeFootage } = require('./footage-intelligence');
 const { analyzeVisualFootage } = require('./visual-intelligence');
+const { embedVisualIndex, embedQuery } = require('./semantic-retrieval');
 const CE = require('../prototype/caption-editor-utils');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -77,6 +78,17 @@ ipcMain.handle('media:visual-analyze', async (_event, payload = {}) => {
     maxFrames:payload.maxFrames ?? 12,
     maxWidth:payload.maxWidth ?? 768
   });
+});
+
+ipcMain.handle('visual:embed-index', async (_event, payload = {}) => {
+  if (!payload?.index) throw new Error('No Visual Intelligence index was provided for semantic retrieval.');
+  if (!payload?.model) throw new Error('No local embedding model was selected.');
+  return embedVisualIndex({ index:payload.index, model:String(payload.model) });
+});
+
+ipcMain.handle('visual:embed-query', async (_event, payload = {}) => {
+  if (!payload?.model) throw new Error('No local embedding model was selected.');
+  return embedQuery({ query:String(payload.query || ''), model:String(payload.model) });
 });
 
 // main.js provides the base application handlers. Stage 4 replaces only export
