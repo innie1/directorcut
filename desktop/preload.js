@@ -16,5 +16,15 @@ contextBridge.exposeInMainWorld('directorcut', {
   transcribe: (mediaPath, model = 'small') => ipcRenderer.invoke('transcribe:run', { mediaPath, model }),
   localAIStatus: () => ipcRenderer.invoke('ai:status'),
   warmModel: model => ipcRenderer.invoke('ai:warm', model),
-  askDirector: payload => ipcRenderer.invoke('director:ask', payload)
+  askDirector: payload => ipcRenderer.invoke('director:ask', payload),
+
+  programMonitorStatus: () => ipcRenderer.invoke('monitor:status'),
+  programMonitorBounds: rect => ipcRenderer.invoke('monitor:bounds', rect),
+  programMonitorLoad: (project, position = 0) => ipcRenderer.invoke('monitor:load', { project, position }),
+  programMonitorPlay: () => ipcRenderer.invoke('monitor:play'),
+  programMonitorPause: () => ipcRenderer.invoke('monitor:pause'),
+  programMonitorSeek: seconds => ipcRenderer.invoke('monitor:seek', seconds),
+  programMonitorPosition: () => ipcRenderer.invoke('monitor:position'),
+  programMonitorVisible: visible => ipcRenderer.invoke('monitor:visible', visible),
+  programMonitorStop: () => ipcRenderer.invoke('monitor:stop')
 });
