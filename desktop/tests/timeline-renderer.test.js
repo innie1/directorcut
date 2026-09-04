@@ -36,6 +36,17 @@ const { buildRenderPlan, buildFilterGraph, renderTimelineProject } = require('..
     assert.equal(plan.videoClips.length, 3);
     assert.equal(plan.audioClips.length, 2);
     assert(Math.abs(plan.duration - 3) < .01);
+
+    const shortened = JSON.parse(JSON.stringify(project));
+    shortened.media.duration = 60;
+    shortened.duration = 60;
+    shortened.timeline.tracks = [
+      { id:'V1', kind:'video', clips:[{ id:'short-v', sourcePath:a, start:0, duration:1.2, sourceIn:.2, sourceDuration:2.5, keyframes:{} }] },
+      { id:'A1', kind:'audio', clips:[{ id:'short-a', sourcePath:a, start:0, duration:1.2, sourceIn:.2, sourceDuration:2.5, keyframes:{} }] }
+    ];
+    const shortenedPlan = buildRenderPlan(shortened);
+    assert(Math.abs(shortenedPlan.duration - 1.2) < .01, `shortened timeline inherited stale project/media duration: ${shortenedPlan.duration}`);
+
     const graph = buildFilterGraph(plan).graph;
     assert(graph.includes('split=2')); // source B is used by two video clips
     assert(graph.includes('[0:a]anull') && graph.includes('[1:a]anull')); // audio clips come from distinct sources
