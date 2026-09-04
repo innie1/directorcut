@@ -9,13 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install native and media dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev ffmpeg
+      - name: Install native, media, GStreamer and GES dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev ffmpeg pkg-config libgstreamer1.0-dev libges-1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
       - name: Configure
-        run: cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF
+        run: cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF -DDIRECTORCUT_BUILD_GSTREAMER=ON
       - name: Build
         run: cmake --build build -j2
-      - name: Test native core
+      - name: Test native core and GStreamer backend
         run: ctest --test-dir build --output-on-failure
       - name: Check desktop syntax
         run: |
@@ -29,7 +31,8 @@ jobs:
           node --check prototype/app.js
           node --check prototype/interaction-controller.js
           node --check prototype/stage4-controller.js
-      - name: Test desktop editing engine
+          node --check prototype/stage5-timeline-ui.js
+      - name: Test desktop editing and render engine
         run: |
           node desktop/tests/media-utils.test.js
           node desktop/tests/timeline-engine.test.js
