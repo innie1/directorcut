@@ -15,7 +15,6 @@ Require-Command node "winget install OpenJS.NodeJS.LTS"
 Require-Command npm "winget install OpenJS.NodeJS.LTS"
 Require-Command ffmpeg "winget install Gyan.FFmpeg"
 Require-Command ffprobe "winget install Gyan.FFmpeg"
-Require-Command python "winget install Python.Python.3.12"
 
 Push-Location (Join-Path $root "desktop")
 try {
@@ -23,6 +22,7 @@ try {
 } finally { Pop-Location }
 
 if ($InstallAI) {
+  Require-Command python "winget install Python.Python.3.12"
   python -m pip install -r (Join-Path $root "requirements-ai.txt")
 }
 
