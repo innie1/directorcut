@@ -116,8 +116,6 @@ class NativeProgramMonitor {
         return;
       }
     }
-    // The native helper can reply before JavaScript has registered its waiter
-    // (notably READY on fast machines). Buffer a small number of unmatched lines.
     this.pendingLines.push(trimmed);
     if (this.pendingLines.length > 48) this.pendingLines.splice(0, this.pendingLines.length - 48);
   }
@@ -257,6 +255,13 @@ class NativeProgramMonitor {
     const value = Math.max(0, Math.round(Number(seconds || 0) * 1e9));
     this.send(`SEEK\t${value}`);
     return true;
+  }
+  async setProperty(clipId, property, value) {
+    if (!this.ready || !clipId || !property || !Number.isFinite(Number(value))) return false;
+    const waiting = this.waitFor('OK\tSET', 800);
+    const line = `SET\t${encodeURIComponent(String(clipId))}\t${String(property)}\t${Number(value)}`;
+    if (!this.send(line)) return false;
+    try { await waiting; return true; } catch (_) { return false; }
   }
   async position() {
     if (!this.ready) return null;
