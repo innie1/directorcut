@@ -96,7 +96,6 @@
     const mod=ev.ctrlKey||ev.metaKey;
     if(mod&&ev.key.toLowerCase()==='z'){ev.preventDefault();$('#undoEdit')?.click();return}
     if(ev.code==='Space'){ev.preventDefault();video.paused?video.play().catch(()=>{}):video.pause();return}
-    if(ev.key.toLowerCase()==='s'){ev.preventDefault();$('#split')?.click();return}
     if(ev.key.toLowerCase()==='i'){ev.preventDefault();$('#setIn')?.click();return}
     if(ev.key.toLowerCase()==='o'){ev.preventDefault();$('#setOut')?.click();return}
     if(ev.key.toLowerCase()==='m'){ev.preventDefault();$('#markScene')?.click();return}
