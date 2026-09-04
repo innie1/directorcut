@@ -116,14 +116,14 @@
     }
   });
 
-  function applyEnhancedOperations(operations, context = 'Director edit') {
+  function applyEnhancedOperations(operations, context = 'Director edit', options = {}) {
     const ops = Array.isArray(operations) ? operations : [];
     if (!ops.length) return 0;
-    pushUndo();
+    if (options.recordUndo !== false) pushUndo();
     let changed = 0;
     for (const op of ops) {
       if (!op) continue;
-      if (op.type === 'seek') { video.currentTime = frameSnap(Number(op.time)||0); continue; }
+      if (op.type === 'seek') { video.currentTime = frameSnap(Number(op.time)||0); renderTimeline(); continue; }
       if (op.type === 'split_at') { state.timeline = TL.splitAt(state.timeline, Number(op.time)||video.currentTime); state.splitPoints.push(frameSnap(Number(op.time)||video.currentTime)); changed++; continue; }
       if (op.type === 'remove_range') { state.timeline = TL.rippleDelete(state.timeline, Number(op.start)||0, Number(op.end)||0); changed++; continue; }
       if (op.type === 'add_marker') { state.marks.push(frameSnap(Number(op.time)||video.currentTime)); changed++; continue; }
@@ -144,9 +144,13 @@
       }
       if (op.type === 'add_keyframe') { state.timeline = TL.addKeyframe(state.timeline,String(op.clipId),String(op.property),Number(op.time)||video.currentTime,Number(op.value)); changed++; }
     }
-    if (changed) { renderTimeline(); markDirty(); learn('accepted',context,ops.map(o=>o.type).join(', ')); }
+    if (changed) {
+      renderTimeline(); markDirty();
+      if (options.learn !== false) learn('accepted',context,ops.map(o=>o.type).join(', '));
+    }
     return changed;
   }
+  window.DirectorCutApplyOperations = applyEnhancedOperations;
 
   function fallbackIntent(q) {
     const low = q.toLowerCase(), ops = [];
@@ -156,6 +160,7 @@
     if (ops.length) return { intent:'edit_task', text:'I can apply that as a reversible timeline edit.', operations:ops };
     return { intent:'conversation', text:'I can discuss the project normally here. Switch to Director when you want a request to become a timeline operation.', operations:[] };
   }
+  window.DirectorCutFallbackIntent = fallbackIntent;
 
   const sendButton = $('#send');
   if (sendButton) sendButton.onclick = async () => {
