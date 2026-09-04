@@ -13,8 +13,21 @@ function keyframeField(clip, property, fallback = null) {
 }
 
 function effectFields(clip) {
-  const color = FX.getEffect(clip, 'color'), blur = FX.getEffect(clip, 'blur'), sharpen = FX.getEffect(clip, 'sharpen'), vignette = FX.getEffect(clip, 'vignette'), colorEnabled = color?.enabled !== false;
-  return [colorEnabled ? n(color?.params?.exposure) : 0,colorEnabled ? n(color?.params?.contrast, 1) : 1,colorEnabled ? n(color?.params?.saturation, 1) : 1,colorEnabled ? n(color?.params?.temperature) : 0,colorEnabled ? n(color?.params?.tint) : 0,blur?.enabled ? n(blur?.params?.radius) : 0,sharpen?.enabled ? n(sharpen?.params?.amount) : 0,vignette?.enabled ? n(vignette?.params?.amount) : 0];
+  const color = FX.getEffect(clip, 'color'), blur = FX.getEffect(clip, 'blur'), sharpen = FX.getEffect(clip, 'sharpen'), vignette = FX.getEffect(clip, 'vignette'), motion = FX.getEffect(clip, 'motionBlur'), lut = FX.getEffect(clip, 'lut'), colorEnabled = color?.enabled !== false;
+  return [
+    colorEnabled ? n(color?.params?.exposure) : 0,
+    colorEnabled ? n(color?.params?.contrast, 1) : 1,
+    colorEnabled ? n(color?.params?.saturation, 1) : 1,
+    colorEnabled ? n(color?.params?.temperature) : 0,
+    colorEnabled ? n(color?.params?.tint) : 0,
+    blur?.enabled ? n(blur?.params?.radius) : 0,
+    sharpen?.enabled ? n(sharpen?.params?.amount) : 0,
+    vignette?.enabled ? n(vignette?.params?.amount) : 0,
+    colorEnabled ? n(color?.params?.highlights) : 0,
+    colorEnabled ? n(color?.params?.shadows) : 0,
+    motion?.enabled ? n(motion?.params?.amount) : 0,
+    encodeField(lut?.enabled ? String(lut?.params?.path || '') : '')
+  ];
 }
 
 function argb(value, fallback) {
@@ -50,7 +63,7 @@ function visualLayerMap(timeline = {}) {
 function buildTimelineManifest(project = {}) {
   const timeline = project.timeline || { tracks: [] }, fps = n(timeline.fps || project.media?.frameRate, 30), canvasWidth = Math.max(0, Math.round(n(project.canvas?.width || project.media?.width))), canvasHeight = Math.max(0, Math.round(n(project.canvas?.height || project.media?.height)));
   const transitions = (Array.isArray(timeline.transitions) ? timeline.transitions : []).filter(t => t?.fromClipId && t?.toClipId), nativeTransitionSafe = transitions.every(t => (t.type || 'dissolve') === 'dissolve');
-  const lines = ['DIRECTORCUT_TIMELINE_V5', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`, `auto-transition\t${transitions.length && nativeTransitionSafe ? 1 : 0}`], layers = visualLayerMap(timeline);
+  const lines = ['DIRECTORCUT_TIMELINE_V6', `fps\t${fps}`, `canvas\t${canvasWidth}\t${canvasHeight}`, `auto-transition\t${transitions.length && nativeTransitionSafe ? 1 : 0}`], layers = visualLayerMap(timeline);
   let clips = 0, videoClips = 0, audioClips = 0, titleClips = 0, graphicClips = 0, duration = 0;
   (timeline.tracks || []).forEach(track => {
     if (!track || track.locked === 'disabled') return;
