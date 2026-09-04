@@ -9,19 +9,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install SQLite development package
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - name: Install native and media dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev ffmpeg
       - name: Configure
         run: cmake -S . -B build -DDIRECTORCUT_BUILD_QT_UI=OFF
       - name: Build
         run: cmake --build build -j2
-      - name: Test
+      - name: Test native core
         run: ctest --test-dir build --output-on-failure
-      - name: Check JavaScript and Python syntax
+      - name: Check desktop syntax
         run: |
           node --check desktop/main.js
           node --check desktop/preload.js
           node --check desktop/media-utils.js
+          node --check desktop/timeline-renderer.js
+          node --check desktop/ollama-client.js
+          node --check desktop/gstreamer.js
+          node --check prototype/timeline-engine.js
           node --check prototype/app.js
+          node --check prototype/interaction-controller.js
+      - name: Test desktop editing engine
+        run: |
           node desktop/tests/media-utils.test.js
-          python3 -m py_compile scripts/transcribe_local.py
+          node desktop/tests/timeline-engine.test.js
+          node desktop/tests/timeline-renderer.test.js
+      - name: Check local transcription adapter
+        run: python3 -m py_compile scripts/transcribe_local.py
