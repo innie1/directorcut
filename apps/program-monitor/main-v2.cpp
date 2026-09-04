@@ -35,6 +35,7 @@ struct ManifestSpec {
     std::vector<ClipSpec> clips;
     guint canvas_width = 0;
     guint canvas_height = 0;
+    bool auto_transition = false;
 };
 
 struct PreviewSignals {
@@ -92,12 +93,13 @@ bool parse_manifest(const std::string& file, ManifestSpec& manifest, std::string
     }
     std::string line;
     if (!std::getline(input, line) ||
-        (line != "DIRECTORCUT_TIMELINE_V1" && line != "DIRECTORCUT_TIMELINE_V2" && line != "DIRECTORCUT_TIMELINE_V3")) {
+        (line != "DIRECTORCUT_TIMELINE_V1" && line != "DIRECTORCUT_TIMELINE_V2" &&
+         line != "DIRECTORCUT_TIMELINE_V3" && line != "DIRECTORCUT_TIMELINE_V4")) {
         error = "Unsupported DirectorCut timeline manifest";
         return false;
     }
-    const bool v2plus = line == "DIRECTORCUT_TIMELINE_V2" || line == "DIRECTORCUT_TIMELINE_V3";
-    const bool v3 = line == "DIRECTORCUT_TIMELINE_V3";
+    const bool v2plus = line == "DIRECTORCUT_TIMELINE_V2" || line == "DIRECTORCUT_TIMELINE_V3" || line == "DIRECTORCUT_TIMELINE_V4";
+    const bool v3plus = line == "DIRECTORCUT_TIMELINE_V3" || line == "DIRECTORCUT_TIMELINE_V4";
     while (std::getline(input, line)) {
         if (line.empty()) continue;
         const auto fields = split_tabs(line);
@@ -107,6 +109,10 @@ bool parse_manifest(const std::string& file, ManifestSpec& manifest, std::string
                 manifest.canvas_width = static_cast<guint>(std::stoul(fields[1]));
                 manifest.canvas_height = static_cast<guint>(std::stoul(fields[2]));
             } catch (...) {}
+            continue;
+        }
+        if (fields[0] == "auto-transition" && fields.size() >= 2) {
+            manifest.auto_transition = fields[1] == "1" || fields[1] == "true";
             continue;
         }
         if (fields[0] != "clip") continue;
@@ -133,7 +139,7 @@ bool parse_manifest(const std::string& file, ManifestSpec& manifest, std::string
                 clip.inspector.speed = directorcut_monitor::parse_points(fields[14], percent_decode_ref);
                 clip.inspector.volume = directorcut_monitor::parse_points(fields[15], percent_decode_ref);
             }
-            if (v3 && fields.size() >= 24) {
+            if (v3plus && fields.size() >= 24) {
                 clip.inspector.effects.exposure = std::stod(fields[16]);
                 clip.inspector.effects.contrast = std::stod(fields[17]);
                 clip.inspector.effects.saturation = std::stod(fields[18]);
@@ -193,6 +199,7 @@ public:
             error = "GES could not create an audio/video timeline";
             return false;
         }
+        ges_timeline_set_auto_transition(timeline_, manifest.auto_transition ? TRUE : FALSE);
 
         const auto max_layer = std::max_element(manifest.clips.begin(), manifest.clips.end(), [](const ClipSpec& a, const ClipSpec& b) { return a.layer < b.layer; })->layer;
         std::vector<GESLayer*> layers;
