@@ -18,14 +18,14 @@ const { buildRenderPlan, buildFilterGraph, renderTimelineProject } = require('..
         fps:30,
         tracks:[
           { id:'V1', kind:'video', clips:[
-            { id:'v1', sourcePath:a, start:0, duration:1.5, sourceIn:.2, sourceDuration:2.5, keyframes:{ scale:[{time:0,value:1},{time:1.4,value:1.15}], opacity:[{time:0,value:1},{time:1.4,value:.8}] } },
+            { id:'v1', sourcePath:a, start:0, duration:1.5, sourceIn:.2, sourceDuration:2.5, keyframes:{ scale:[{time:0,value:1},{time:1.4,value:1.15}], opacity:[{time:0,value:1},{time:1.4,value:.8}], x:[{time:0,value:8}], y:[{time:0,value:-4}], rotation:[{time:0,value:3}], speed:[{time:0,value:1.2}] } },
             { id:'v2', sourcePath:b, start:1.5, duration:1.5, sourceIn:.1, sourceDuration:2.5, keyframes:{} }
           ] },
           { id:'V2', kind:'video', clips:[
             { id:'overlay', sourcePath:b, start:.5, duration:.6, sourceIn:.3, sourceDuration:2.5, keyframes:{ opacity:[{time:0,value:.45},{time:.6,value:.15}] } }
           ] },
           { id:'A1', kind:'audio', clips:[
-            { id:'a1', sourcePath:a, start:0, duration:1.5, sourceIn:.2, sourceDuration:2.5, keyframes:{ volume:[{time:0,value:.4},{time:1.4,value:.8}] } },
+            { id:'a1', sourcePath:a, start:0, duration:1.5, sourceIn:.2, sourceDuration:2.5, keyframes:{ volume:[{time:0,value:.4},{time:1.4,value:.8}], speed:[{time:0,value:1.2}] } },
             { id:'a2', sourcePath:b, start:1.5, duration:1.5, sourceIn:.1, sourceDuration:2.5, keyframes:{} }
           ] }
         ]
@@ -52,6 +52,10 @@ const { buildRenderPlan, buildFilterGraph, renderTimelineProject } = require('..
     assert(graph.includes('[0:a]anull') && graph.includes('[1:a]anull')); // audio clips come from distinct sources
     assert(graph.includes('zoompan'));
     assert(graph.includes('geq='));
+    assert(graph.includes('rotate=angle='));
+    assert(graph.includes('crop=320:180'));
+    assert(graph.includes('setpts=(PTS-STARTPTS)/1.200000'));
+    assert(graph.includes('atempo=1.200000'));
     assert(graph.includes('amix=inputs=2'));
 
     process.env.DIRECTORCUT_VIDEO_ENCODER = 'libx264';
