@@ -112,8 +112,7 @@
   syncWorkingUi();
 })();
 
-// Load the edit-only Undo guard after the legacy editor handlers are installed, so it
-// becomes the final authority for the Undo button and Ctrl/Cmd+Z.
+// Load final runtime layers after the legacy editor handlers are installed.
 (() => {
   function load(src, done) {
     if (document.querySelector(`script[data-runtime="${src}"]`)) { done?.(); return; }
@@ -123,7 +122,8 @@
     script.onload = () => done?.();
     document.body.appendChild(script);
   }
-  const loadRuntime = () => load('edit-undo-runtime.js');
-  if (window.DirectorEditUndoUtils) loadRuntime();
-  else load('edit-undo-utils.js', loadRuntime);
+  const loadUndoRuntime = () => load('edit-undo-runtime.js');
+  if (window.DirectorEditUndoUtils) loadUndoRuntime();
+  else load('edit-undo-utils.js', loadUndoRuntime);
+  load('home-dashboard.js');
 })();
