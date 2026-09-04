@@ -24,6 +24,8 @@ const project = {
 const result = buildTimelineManifest(project);
 assert.equal(result.fps, 24);
 assert.equal(result.clips, 2);
+assert.equal(result.videoClips, 1);
+assert.equal(result.audioClips, 1);
 assert.equal(result.duration, 2.5);
 assert.equal(result.canvasWidth, 1280);
 assert.equal(result.canvasHeight, 720);
