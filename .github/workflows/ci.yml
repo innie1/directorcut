@@ -19,23 +19,19 @@ jobs:
         run: cmake --build build -j2
       - name: Test native core and GStreamer backend
         run: ctest --test-dir build --output-on-failure
-      - name: Check desktop syntax
-        run: |
-          node --check desktop/main.js
-          node --check desktop/preload.js
-          node --check desktop/media-utils.js
-          node --check desktop/timeline-renderer.js
-          node --check desktop/ollama-client.js
-          node --check desktop/gstreamer.js
-          node --check prototype/timeline-engine.js
-          node --check prototype/app.js
-          node --check prototype/interaction-controller.js
-          node --check prototype/stage4-controller.js
-          node --check prototype/stage5-timeline-ui.js
-      - name: Test desktop editing and render engine
-        run: |
-          node desktop/tests/media-utils.test.js
-          node desktop/tests/timeline-engine.test.js
-          node desktop/tests/timeline-renderer.test.js
+      - name: Syntax main and preload
+        run: node --check desktop/main.js && node --check desktop/preload.js
+      - name: Syntax media and local AI
+        run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
+      - name: Syntax timeline engine and base UI
+        run: node --check prototype/timeline-engine.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
+      - name: Syntax advanced timeline UI
+        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js
+      - name: Test media utilities
+        run: node desktop/tests/media-utils.test.js
+      - name: Test timeline engine
+        run: node desktop/tests/timeline-engine.test.js
+      - name: Render real multitrack smoke test
+        run: node desktop/tests/timeline-renderer.test.js
       - name: Check local transcription adapter
         run: python3 -m py_compile scripts/transcribe_local.py
