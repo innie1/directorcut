@@ -21,6 +21,7 @@
 
   function frameDuration(fps) { return 1 / parseFps(fps); }
   function snapTime(seconds, fps) { const f = parseFps(fps); return Math.max(0, Math.round((Number(seconds) || 0) * f) / f); }
+  function snapDelta(seconds, fps) { const f = parseFps(fps); return Math.round((Number(seconds) || 0) * f) / f; }
   function clipEnd(clip) { return (Number(clip.start) || 0) + (Number(clip.duration) || 0); }
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
@@ -87,7 +88,7 @@
   function rollBoundary(timelineInput, leftId, rightId, deltaSeconds) {
     const timeline = normalizeTimeline(timelineInput), leftFound = findClip(timeline, leftId), rightFound = findClip(timeline, rightId);
     if (!leftFound || !rightFound || leftFound.track.id !== rightFound.track.id || leftFound.track.locked) return timeline;
-    const left = leftFound.clip, right = rightFound.clip, frame = frameDuration(timeline.fps), delta = snapTime(deltaSeconds, timeline.fps);
+    const left = leftFound.clip, right = rightFound.clip, frame = frameDuration(timeline.fps), delta = snapDelta(deltaSeconds, timeline.fps);
     const maxLeftGrow = Math.max(0, left.sourceDuration - (left.sourceIn + left.duration)), maxRightTrim = Math.max(0, right.duration - frame), maxLeftTrim = Math.max(0, left.duration - frame), maxRightGrow = Math.max(0, right.sourceIn);
     const clamped = Math.max(-Math.min(maxLeftTrim, maxRightGrow), Math.min(delta, maxLeftGrow, maxRightTrim)); if (Math.abs(clamped) <= EPS) return timeline;
     left.duration = snapTime(left.duration + clamped, timeline.fps); right.start = snapTime(right.start + clamped, timeline.fps); right.sourceIn = snapTime(right.sourceIn + clamped, timeline.fps); right.duration = snapTime(right.duration - clamped, timeline.fps); return timeline;
@@ -95,12 +96,12 @@
 
   function slipClip(timelineInput, clipId, deltaSeconds) {
     const timeline = normalizeTimeline(timelineInput), found = findClip(timeline, clipId); if (!found || found.track.locked) return timeline; const clip = found.clip;
-    const maxIn = Math.max(0, clip.sourceDuration - clip.duration); clip.sourceIn = snapTime(Math.max(0, Math.min(maxIn, clip.sourceIn + deltaSeconds)), timeline.fps); return timeline;
+    const maxIn = Math.max(0, clip.sourceDuration - clip.duration); clip.sourceIn = snapTime(Math.max(0, Math.min(maxIn, clip.sourceIn + snapDelta(deltaSeconds, timeline.fps))), timeline.fps); return timeline;
   }
 
   function slideClip(timelineInput, clipId, deltaSeconds) {
     const timeline = normalizeTimeline(timelineInput), found = findClip(timeline, clipId); if (!found || found.track.locked) return timeline; const track = found.track, i = found.index, prev = track.clips[i - 1], next = track.clips[i + 1];
-    if (!prev || !next) return moveClip(timeline, clipId, found.clip.start + deltaSeconds); const frame = frameDuration(timeline.fps), delta = snapTime(deltaSeconds, timeline.fps), minDelta = -Math.max(0, prev.duration - frame), maxDelta = Math.max(0, next.duration - frame), d = Math.max(minDelta, Math.min(maxDelta, delta));
+    if (!prev || !next) return moveClip(timeline, clipId, found.clip.start + deltaSeconds); const frame = frameDuration(timeline.fps), delta = snapDelta(deltaSeconds, timeline.fps), minDelta = -Math.max(0, prev.duration - frame), maxDelta = Math.max(0, next.duration - frame), d = Math.max(minDelta, Math.min(maxDelta, delta));
     if (Math.abs(d) <= EPS) return timeline; prev.duration = snapTime(prev.duration + d, timeline.fps); found.clip.start = snapTime(found.clip.start + d, timeline.fps); next.start = snapTime(next.start + d, timeline.fps); next.sourceIn = snapTime(next.sourceIn + d, timeline.fps); next.duration = snapTime(next.duration - d, timeline.fps); return timeline;
   }
 
@@ -111,5 +112,5 @@
   }
 
   function duration(timelineInput) { const timeline = normalizeTimeline(timelineInput); let max = 0; for (const track of timeline.tracks) for (const clip of track.clips) max = Math.max(max, clipEnd(clip)); return max; }
-  return { parseFps, frameDuration, snapTime, clipEnd, createClip, normalizeTimeline, findClip, moveClip, rippleDelete, rollBoundary, slipClip, slideClip, addKeyframe, duration };
+  return { parseFps, frameDuration, snapTime, snapDelta, clipEnd, createClip, normalizeTimeline, findClip, moveClip, rippleDelete, rollBoundary, slipClip, slideClip, addKeyframe, duration };
 });
