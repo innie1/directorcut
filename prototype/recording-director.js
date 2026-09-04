@@ -102,7 +102,6 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const currentScene = () => RS.activeScene(state.recordingSession);
-  const sceneIndex = sceneId => state.recordingSession?.scenes?.findIndex(scene => scene.sceneId === sceneId) ?? -1;
   const candidateForScene = scene => {
     if (!scene) return null;
     if (lastCandidate?.sceneId === scene.sceneId) {
@@ -115,6 +114,12 @@
   function setStatus(text, kind = '') {
     statusEl.textContent = text;
     statusEl.dataset.kind = kind;
+  }
+
+  async function setProgramMonitorVisibility(visible) {
+    const fn = window.directorcut?.programMonitorVisible;
+    if (typeof fn !== 'function') return false;
+    try { return await fn(visible); } catch (_) { return false; }
   }
 
   function chooseMimeType() {
@@ -156,7 +161,7 @@
     if (recorder?.state === 'recording') return true;
     stopTracks();
     const videoConstraint = cameraSelect.value ? { deviceId:{ exact:cameraSelect.value }, width:{ ideal:1920 }, height:{ ideal:1080 }, frameRate:{ ideal:30 } } : { width:{ ideal:1920 }, height:{ ideal:1080 }, frameRate:{ ideal:30 } };
-    const audioConstraint = micSelect.value ? { deviceId:{ exact:micSelect.value }, echoCancellation:true, noiseSuppression:true, autoGainControl:true } : true;
+    const audioConstraint = micSelect.options.length ? (micSelect.value ? { deviceId:{ exact:micSelect.value }, echoCancellation:true, noiseSuppression:true, autoGainControl:true } : false) : true;
     try {
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ video:videoConstraint, audio:audioConstraint });
@@ -168,7 +173,7 @@
       cameraPreview.muted = true;
       await cameraPreview.play().catch(() => {});
       cameraEmpty.hidden = true;
-      if (!statusEl.dataset.kind || statusEl.dataset.kind === 'error') setStatus('Camera and microphone ready.', 'ready');
+      if (!statusEl.dataset.kind || statusEl.dataset.kind === 'error') setStatus(mediaStream.getAudioTracks().length ? 'Camera and microphone ready.' : 'Camera ready · microphone off.', 'ready');
       await refreshDevices().catch(() => {});
       return true;
     } catch (error) {
@@ -223,15 +228,27 @@
   }
 
   function setRecordingUi(isRecording, isBusy = false) {
+    const locked = isRecording || isBusy;
     recordButton.hidden = isRecording;
     stopButton.hidden = !isRecording;
     recordButton.disabled = isBusy;
     stopButton.disabled = isBusy;
-    cameraSelect.disabled = isRecording || isBusy;
-    micSelect.disabled = isRecording || isBusy;
-    $('#recordingRetryCamera').disabled = isRecording || isBusy;
+    cameraSelect.disabled = locked;
+    micSelect.disabled = locked;
+    $('#recordingRetryCamera').disabled = locked;
     $('#recordingLiveBadge').hidden = !isRecording;
     $('#recordingDirectorClose').disabled = isBusy;
+    overlay.dataset.captureLocked = locked ? '1' : '0';
+    if (locked) {
+      acceptButton.disabled = true;
+      retakeButton.disabled = true;
+      rejectButton.disabled = true;
+      $('#recordingPrevScene').disabled = true;
+      $('#recordingNextScene').disabled = true;
+      $('#recordingSkipScene').disabled = true;
+    } else if (state.recordingSession) {
+      queueMicrotask(renderSession);
+    }
   }
 
   async function startRecording() {
@@ -275,7 +292,15 @@
       }).catch(error => { chunkError = chunkError || error; });
     });
     recorder.addEventListener('error', event => { chunkError = chunkError || event.error || new Error('MediaRecorder failed.'); });
-    recorder.start(1000);
+    try {
+      recorder.start(1000);
+    } catch (error) {
+      await window.directorcut.recordingCancel(activeRecording.recordingId).catch(() => false);
+      recorder = null; activeRecording = null;
+      setRecordingUi(false, false);
+      setStatus(`Recorder could not begin capture: ${error.message || error}`, 'error');
+      return;
+    }
     setRecordingUi(true, false);
     setStatus(`Recording Scene ${scene.index + 1} · Take ${takeNumber}`, 'recording');
     startPromptScroll(); updateTimer();
@@ -288,12 +313,12 @@
     setStatus('Finishing take…', 'busy');
     stopPromptScroll();
     if (active.timer) clearTimeout(active.timer);
-    const stopped = new Promise(resolve => currentRecorder.addEventListener('stop', resolve, { once:true }));
     if (currentRecorder.state !== 'inactive') {
+      const stopped = new Promise(resolve => currentRecorder.addEventListener('stop', resolve, { once:true }));
       try { currentRecorder.requestData(); } catch (_) {}
       currentRecorder.stop();
+      await stopped;
     }
-    await stopped;
     await chunkQueue;
     recorder = null;
     activeRecording = null;
@@ -346,7 +371,7 @@
   function acceptTake(sceneId, takeId, advance = true) {
     const before = state.recordingSession?.scenes?.find(scene => scene.sceneId === sceneId);
     const take = before?.takes?.find(item => item.id === takeId);
-    if (!before || !take) return;
+    if (!before || !take || activeRecording) return;
     addAcceptedToLibrary(before, take);
     state.recordingSession = RS.acceptTake(state.recordingSession, sceneId, takeId, { advance });
     lastCandidate = null;
@@ -357,6 +382,7 @@
   }
 
   function rejectTake(sceneId, takeId) {
+    if (activeRecording) return;
     state.recordingSession = RS.rejectTake(state.recordingSession, sceneId, takeId);
     if (lastCandidate?.takeId === takeId) lastCandidate = null;
     if (typeof markDirty === 'function') markDirty();
@@ -364,6 +390,7 @@
   }
 
   async function retakeCurrent() {
+    if (activeRecording) return;
     const scene = currentScene(), candidate = candidateForScene(scene);
     if (candidate) rejectTake(scene.sceneId, candidate.id);
     await startRecording();
@@ -379,8 +406,9 @@
       button.innerHTML = `<span>${status}</span><div><b></b><small></small></div>`;
       button.querySelector('b').textContent = scene.purpose || `Scene ${index + 1}`;
       button.querySelector('small').textContent = `${scene.takes.length} take${scene.takes.length === 1 ? '' : 's'}${scene.acceptedTakeId ? ' · accepted' : ''}`;
+      button.disabled = Boolean(activeRecording);
       button.onclick = () => {
-        if (recorder?.state === 'recording') return;
+        if (activeRecording) return;
         state.recordingSession = RS.setActiveScene(state.recordingSession, index);
         lastCandidate = null; promptScroller.scrollTop = 0; renderSession();
       };
@@ -398,6 +426,7 @@
       row.querySelector('[data-action="preview"]').onclick = () => previewTake(scene.sceneId, take.id);
       row.querySelector('[data-action="accept"]').onclick = () => acceptTake(scene.sceneId, take.id, false);
       row.querySelector('[data-action="reject"]').onclick = () => rejectTake(scene.sceneId, take.id);
+      for (const button of row.querySelectorAll('button')) button.disabled = Boolean(activeRecording);
       if (take.status === 'accepted') row.querySelector('[data-action="accept"]').textContent = 'Accepted';
       root.appendChild(row);
     }
@@ -405,7 +434,7 @@
 
   function renderSession() {
     if (!state.recordingSession) return;
-    const scene = currentScene(), progress = RS.progress(state.recordingSession);
+    const scene = currentScene(), progress = RS.progress(state.recordingSession), locked = Boolean(activeRecording);
     $('#recordingProgressText').textContent = `${progress.complete + progress.skipped} / ${progress.total} scenes · ${progress.percent}%`;
     $('#recordingProgressBar').style.width = `${progress.percent}%`;
     renderSceneList();
@@ -414,14 +443,14 @@
     $('#recordingScenePurpose').textContent = scene.purpose || `Scene ${scene.index + 1}`;
     $('#recordingPerformance').textContent = scene.performance || 'Natural delivery';
     promptText.textContent = scene.text || 'Free recording';
-    $('#recordingPrevScene').disabled = scene.index <= 0 || recorder?.state === 'recording';
-    $('#recordingNextScene').disabled = scene.index >= state.recordingSession.scenes.length - 1 || recorder?.state === 'recording';
-    $('#recordingSkipScene').disabled = Boolean(scene.acceptedTakeId) || recorder?.state === 'recording';
+    $('#recordingPrevScene').disabled = locked || scene.index <= 0;
+    $('#recordingNextScene').disabled = locked || scene.index >= state.recordingSession.scenes.length - 1;
+    $('#recordingSkipScene').disabled = locked || Boolean(scene.acceptedTakeId);
     renderTakeList(scene);
     const candidate = candidateForScene(scene);
-    acceptButton.disabled = !candidate || recorder?.state === 'recording';
-    retakeButton.disabled = recorder?.state === 'recording';
-    rejectButton.disabled = !candidate || recorder?.state === 'recording';
+    acceptButton.disabled = locked || !candidate;
+    retakeButton.disabled = locked;
+    rejectButton.disabled = locked || !candidate;
     if (candidate) {
       $('#recordingReviewLabel').textContent = `Take ${candidate.takeNumber} is waiting for approval.`;
       lastCandidate = { sceneId:scene.sceneId, takeId:candidate.id };
@@ -440,7 +469,7 @@
     overlay.hidden = false;
     document.body.classList.add('recordingDirectorOpen');
     programMonitorWasActive = Boolean(window.DirectorCutProgramMonitor?.active);
-    if (programMonitorWasActive) await window.directorcut?.programMonitorVisible?.(false).catch(() => false);
+    if (programMonitorWasActive) await setProgramMonitorVisibility(false);
     renderSession();
     await startCamera();
   }
@@ -453,7 +482,7 @@
     if (state.recordingSession && state.recordingSession.status !== 'complete') state.recordingSession = RS.pause(state.recordingSession);
     overlay.hidden = true;
     document.body.classList.remove('recordingDirectorOpen');
-    if (programMonitorWasActive) await window.directorcut?.programMonitorVisible?.(true).catch(() => false);
+    if (programMonitorWasActive) await setProgramMonitorVisibility(true);
     programMonitorWasActive = false;
     if (typeof markDirty === 'function') markDirty();
   }
@@ -469,10 +498,10 @@
   acceptButton.onclick = () => { const scene=currentScene(),candidate=candidateForScene(scene);if(candidate)acceptTake(scene.sceneId,candidate.id,true); };
   retakeButton.onclick = retakeCurrent;
   rejectButton.onclick = () => { const scene=currentScene(),candidate=candidateForScene(scene);if(candidate)rejectTake(scene.sceneId,candidate.id); };
-  $('#recordingPrevScene').onclick = () => { const scene=currentScene();if(scene) { state.recordingSession=RS.setActiveScene(state.recordingSession,scene.index-1);lastCandidate=null;promptScroller.scrollTop=0;renderSession(); } };
-  $('#recordingNextScene').onclick = () => { const scene=currentScene();if(scene) { state.recordingSession=RS.setActiveScene(state.recordingSession,scene.index+1);lastCandidate=null;promptScroller.scrollTop=0;renderSession(); } };
-  $('#recordingSkipScene').onclick = () => { const scene=currentScene();if(scene){state.recordingSession=RS.skipScene(state.recordingSession,scene.sceneId);lastCandidate=null;promptScroller.scrollTop=0;if(typeof markDirty==='function')markDirty();renderSession();} };
-  overlay.addEventListener('keydown', event => { if (event.key === 'Escape' && recorder?.state !== 'recording') closeRecordingDirector(); });
+  $('#recordingPrevScene').onclick = () => { const scene=currentScene();if(scene&&!activeRecording) { state.recordingSession=RS.setActiveScene(state.recordingSession,scene.index-1);lastCandidate=null;promptScroller.scrollTop=0;renderSession(); } };
+  $('#recordingNextScene').onclick = () => { const scene=currentScene();if(scene&&!activeRecording) { state.recordingSession=RS.setActiveScene(state.recordingSession,scene.index+1);lastCandidate=null;promptScroller.scrollTop=0;renderSession(); } };
+  $('#recordingSkipScene').onclick = () => { const scene=currentScene();if(scene&&!activeRecording){state.recordingSession=RS.skipScene(state.recordingSession,scene.sceneId);lastCandidate=null;promptScroller.scrollTop=0;if(typeof markDirty==='function')markDirty();renderSession();} };
+  overlay.addEventListener('keydown', event => { if (event.key === 'Escape' && !activeRecording) closeRecordingDirector(); });
 
   if (typeof projectObject === 'function') {
     const baseProjectObject = projectObject;
@@ -494,7 +523,12 @@
   window.addEventListener('beforeunload', () => {
     countdownToken++;
     stopPromptScroll(); stopTracks();
-    if (activeRecording?.recordingId) window.directorcut?.recordingCancel?.(activeRecording.recordingId).catch?.(() => false);
+    if (activeRecording?.recordingId) {
+      try {
+        const pending = window.directorcut?.recordingCancel?.(activeRecording.recordingId);
+        if (pending?.catch) pending.catch(() => false);
+      } catch (_) {}
+    }
   });
 
   if (!desktop) openButton.disabled = true;
