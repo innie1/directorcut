@@ -25,8 +25,8 @@ jobs:
         run: node --check desktop/media-utils.js && node --check desktop/timeline-renderer.js && node --check desktop/ollama-client.js && node --check desktop/gstreamer.js
       - name: Syntax timeline engine and base UI
         run: node --check prototype/timeline-engine.js && node --check prototype/app.js && node --check prototype/interaction-controller.js
-      - name: Syntax advanced timeline UI
-        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js
+      - name: Syntax advanced timeline and focused UX
+        run: node --check prototype/stage4-controller.js && node --check prototype/stage5-timeline-ui.js && node --check prototype/ux-controller.js
       - name: Test media utilities
         run: node desktop/tests/media-utils.test.js
       - name: Test timeline engine
