@@ -21,7 +21,11 @@
 
   function normalizeIndex(index={}){
     const entries=(index.entries||[]).map((entry,i)=>normalizeEntry(entry,{id:`visual-${String(i+1).padStart(3,'0')}`,sceneIndex:i,model:index.model})).sort((a,b)=>a.time-b.time);
-    return{version:1,sourceFingerprint:String(index.sourceFingerprint||''),sourcePath:index.sourcePath||null,model:String(index.model||''),analyzedAt:index.analyzedAt||null,entries,warnings:unique(index.warnings),summary:summarize({entries})};
+    return{
+      version:1,sourceFingerprint:String(index.sourceFingerprint||''),sourcePath:index.sourcePath||null,model:String(index.model||''),analyzedAt:index.analyzedAt||null,
+      embeddingModel:clean(index.embeddingModel),embeddingUpdatedAt:index.embeddingUpdatedAt||null,
+      entries,warnings:unique(index.warnings),summary:summarize({entries})
+    };
   }
 
   function entryText(entry={}){
