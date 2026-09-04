@@ -20,6 +20,17 @@ struct KeyPoint {
     double value = 0.0;
 };
 
+struct VisualEffectSpec {
+    double exposure = 0.0;
+    double contrast = 1.0;
+    double saturation = 1.0;
+    double temperature = 0.0;
+    double tint = 0.0;
+    double blur = 0.0;
+    double sharpen = 0.0;
+    double vignette = 0.0;
+};
+
 struct InspectorSpec {
     std::vector<KeyPoint> x;
     std::vector<KeyPoint> y;
@@ -28,13 +39,18 @@ struct InspectorSpec {
     std::vector<KeyPoint> opacity;
     std::vector<KeyPoint> speed;
     std::vector<KeyPoint> volume;
+    VisualEffectSpec effects;
 };
 
 struct InspectorRuntime {
-    GESClip* clip = nullptr;                 // owned by the timeline
-    GESTrackElement* source = nullptr;       // strong reference held here
-    GESEffect* rotation_effect = nullptr;    // owned by clip; optional borrowed pointer
+    GESClip* clip = nullptr;                   // owned by the timeline
+    GESTrackElement* source = nullptr;         // strong reference held here
+    GESEffect* rotation_effect = nullptr;      // owned by clip; optional borrowed pointer
     GESTrackElement* rotation_track = nullptr; // strong reference held here
+    GESEffect* color_effect = nullptr;         // owned by clip; optional borrowed pointer
+    GESTrackElement* color_track = nullptr;    // strong reference held here
+    GESEffect* blur_effect = nullptr;          // owned by clip; optional borrowed pointer
+    GESTrackElement* blur_track = nullptr;     // strong reference held here
     GESTrackType type = GES_TRACK_TYPE_UNKNOWN;
     guint canvas_width = 0;
     guint canvas_height = 0;
@@ -45,6 +61,14 @@ struct InspectorRuntime {
     double opacity = 1.0;
     double volume = 1.0;
     double speed = 1.0;
+    double exposure = 0.0;
+    double contrast = 1.0;
+    double saturation = 1.0;
+    double temperature = 0.0;
+    double tint = 0.0;
+    double blur = 0.0;
+    double sharpen = 0.0;
+    double vignette = 0.0;
 };
 
 inline double clamp(double v, double lo, double hi) { return std::max(lo, std::min(hi, v)); }
@@ -149,28 +173,29 @@ inline std::vector<KeyPoint> derived_geometry_points(const InspectorSpec& spec, 
     return out;
 }
 
-inline GESEffect* ensure_rotation_effect(GESClip* clip, std::string& warning) {
-    if (!clip) return nullptr;
-    GstElementFactory* factory = gst_element_factory_find("rotate");
-    if (!factory) {
-        warning = "GStreamer rotate effect is unavailable; native rotation preview is disabled.";
-        return nullptr;
-    }
+inline GESEffect* add_top_effect_if_available(GESClip* clip, const char* factory_name,
+                                               const std::string& description, std::string& warning) {
+    if (!clip || !factory_name) return nullptr;
+    GstElementFactory* factory = gst_element_factory_find(factory_name);
+    if (!factory) return nullptr;
     gst_object_unref(factory);
-    GESEffect* effect = ges_effect_new("rotate angle=0");
+    GESEffect* effect = ges_effect_new(description.c_str());
     if (!effect) {
-        warning = "GES could not create the rotate effect.";
+        warning = std::string("GES could not create ") + factory_name + " effect.";
         return nullptr;
     }
     GError* error = nullptr;
     if (!ges_clip_add_top_effect(clip, GES_BASE_EFFECT(effect), -1, &error)) {
-        warning = error ? error->message : "GES could not add the rotate effect.";
+        warning = error ? error->message : std::string("GES could not add ") + factory_name + " effect.";
         if (error) g_error_free(error);
         g_object_unref(effect);
         return nullptr;
     }
-    // The clip owns the effect after add_top_effect. Keep a borrowed pointer.
     return effect;
+}
+
+inline GESEffect* ensure_rotation_effect(GESClip* clip, std::string& warning) {
+    return add_top_effect_if_available(clip, "rotate", "rotate angle=0", warning);
 }
 
 inline bool add_speed_effect(GESClip* clip, GESTrackType type, double speed, std::string& warning) {
@@ -208,6 +233,22 @@ inline bool apply_video_geometry(InspectorRuntime& runtime) {
     return ok;
 }
 
+inline double color_hue(const InspectorRuntime& runtime) {
+    // videobalance does not expose independent temperature/tint channels.
+    // Keep native preview perceptually useful while FFmpeg remains export-authoritative.
+    return clamp((runtime.tint * 0.70 - runtime.temperature * 0.25) / 100.0 * 0.28, -1.0, 1.0);
+}
+
+inline bool apply_color_effect(InspectorRuntime& runtime) {
+    if (!runtime.color_track) return false;
+    bool ok = true;
+    ok = set_child_numeric(GES_TIMELINE_ELEMENT(runtime.color_track), "brightness", clamp(runtime.exposure / 8.0, -0.5, 0.5)) && ok;
+    ok = set_child_numeric(GES_TIMELINE_ELEMENT(runtime.color_track), "contrast", clamp(runtime.contrast, 0.25, 4.0)) && ok;
+    ok = set_child_numeric(GES_TIMELINE_ELEMENT(runtime.color_track), "saturation", clamp(runtime.saturation, 0.0, 4.0)) && ok;
+    ok = set_child_numeric(GES_TIMELINE_ELEMENT(runtime.color_track), "hue", color_hue(runtime)) && ok;
+    return ok;
+}
+
 inline bool set_live_property(InspectorRuntime& runtime, const std::string& property, double value) {
     if (!runtime.source) return false;
     if (property == "x") { runtime.x = value; return apply_video_geometry(runtime); }
@@ -225,14 +266,28 @@ inline bool set_live_property(InspectorRuntime& runtime, const std::string& prop
         runtime.rotation = clamp(value, -360.0, 360.0);
         return set_child_numeric(GES_TIMELINE_ELEMENT(runtime.rotation_track), "angle", runtime.rotation * G_PI / 180.0);
     }
-    // Speed changes clip timing and is intentionally applied by rebuilding the manifest.
+    if (property == "effect.color.exposure") { runtime.exposure = clamp(value, -4.0, 4.0); return apply_color_effect(runtime); }
+    if (property == "effect.color.contrast") { runtime.contrast = clamp(value, 0.25, 4.0); return apply_color_effect(runtime); }
+    if (property == "effect.color.saturation") { runtime.saturation = clamp(value, 0.0, 4.0); return apply_color_effect(runtime); }
+    if (property == "effect.color.temperature") { runtime.temperature = clamp(value, -100.0, 100.0); return apply_color_effect(runtime); }
+    if (property == "effect.color.tint") { runtime.tint = clamp(value, -100.0, 100.0); return apply_color_effect(runtime); }
+    if (property == "effect.blur.radius" && runtime.blur_track) {
+        runtime.blur = clamp(value, 0.0, 50.0);
+        return set_child_numeric(GES_TIMELINE_ELEMENT(runtime.blur_track), "sigma", std::max(0.1, runtime.blur / 2.0));
+    }
+    // Speed changes clip timing. Blur creation/removal, sharpen and vignette are
+    // intentionally applied by rebuilding the manifest/export graph.
     return false;
 }
 
 inline void release_runtime(InspectorRuntime& runtime) {
     if (runtime.source) { g_object_unref(runtime.source); runtime.source = nullptr; }
     if (runtime.rotation_track) { g_object_unref(runtime.rotation_track); runtime.rotation_track = nullptr; }
+    if (runtime.color_track) { g_object_unref(runtime.color_track); runtime.color_track = nullptr; }
+    if (runtime.blur_track) { g_object_unref(runtime.blur_track); runtime.blur_track = nullptr; }
     runtime.rotation_effect = nullptr;
+    runtime.color_effect = nullptr;
+    runtime.blur_effect = nullptr;
     runtime.clip = nullptr;
 }
 
@@ -250,6 +305,14 @@ inline bool configure_inspector(GESClip* clip, GESTrackType type, const Inspecto
     runtime.opacity = clamp(value_at(spec.opacity, 0, 1.0), 0.0, 1.0);
     runtime.volume = clamp(value_at(spec.volume, 0, 1.0), 0.0, 10.0);
     runtime.speed = clamp(value_at(spec.speed, 0, 1.0), 0.25, 4.0);
+    runtime.exposure = clamp(spec.effects.exposure, -4.0, 4.0);
+    runtime.contrast = clamp(spec.effects.contrast, 0.25, 4.0);
+    runtime.saturation = clamp(spec.effects.saturation, 0.0, 4.0);
+    runtime.temperature = clamp(spec.effects.temperature, -100.0, 100.0);
+    runtime.tint = clamp(spec.effects.tint, -100.0, 100.0);
+    runtime.blur = clamp(spec.effects.blur, 0.0, 50.0);
+    runtime.sharpen = clamp(spec.effects.sharpen, 0.0, 3.0);
+    runtime.vignette = clamp(spec.effects.vignette, 0.0, 1.0);
 
     const GType source_type = type == GES_TRACK_TYPE_VIDEO ? GES_TYPE_VIDEO_SOURCE : GES_TYPE_AUDIO_SOURCE;
     runtime.source = ges_clip_find_track_element(clip, nullptr, source_type);
@@ -263,6 +326,19 @@ inline bool configure_inspector(GESClip* clip, GESTrackType type, const Inspecto
     if (type == GES_TRACK_TYPE_VIDEO) {
         apply_video_geometry(runtime);
         set_child_numeric(GES_TIMELINE_ELEMENT(runtime.source), "alpha", runtime.opacity);
+
+        runtime.color_effect = add_top_effect_if_available(clip, "videobalance", "videobalance brightness=0 contrast=1 saturation=1 hue=0", warning);
+        if (runtime.color_effect) {
+            runtime.color_track = GES_TRACK_ELEMENT(g_object_ref(runtime.color_effect));
+            apply_color_effect(runtime);
+        }
+
+        if (runtime.blur > 1e-6) {
+            std::ostringstream blur_description;
+            blur_description << "gaussianblur sigma=" << std::max(0.1, runtime.blur / 2.0);
+            runtime.blur_effect = add_top_effect_if_available(clip, "gaussianblur", blur_description.str(), warning);
+            if (runtime.blur_effect) runtime.blur_track = GES_TRACK_ELEMENT(g_object_ref(runtime.blur_effect));
+        }
 
         if (!spec.rotation.empty() || std::abs(runtime.rotation) > 1e-6) {
             runtime.rotation_effect = ensure_rotation_effect(clip, warning);
