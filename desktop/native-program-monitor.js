@@ -47,6 +47,7 @@ class NativeProgramMonitor {
     this.lastBounds = null;
     this.manifestPath = null;
     this.waiters = [];
+    this.pendingLines = [];
     this.stderr = '';
     this.gstreamer = null;
   }
@@ -60,7 +61,7 @@ class NativeProgramMonitor {
       gstreamer: this.gstreamer,
       enabled: this.enabled,
       ready: this.ready,
-      backend: this.ready ? 'ges-native' : 'chromium-timeline',
+      backend: this.ready ? 'ges-native' : 'chromium-source',
       reason: !this.gstreamer?.available ? 'GStreamer runtime not detected.' : !this.gstreamer?.ges ? 'GStreamer Editing Services is not installed.' : !helper ? 'Native Program Monitor helper has not been built yet.' : null
     };
   }
@@ -115,9 +116,18 @@ class NativeProgramMonitor {
         return;
       }
     }
+    // The native helper can reply before JavaScript has registered its waiter
+    // (notably READY on fast machines). Buffer a small number of unmatched lines.
+    this.pendingLines.push(trimmed);
+    if (this.pendingLines.length > 48) this.pendingLines.splice(0, this.pendingLines.length - 48);
   }
 
   waitFor(prefix, timeoutMs = 5000) {
+    const pendingIndex = this.pendingLines.findIndex(line => !prefix || line.startsWith(prefix));
+    if (pendingIndex >= 0) {
+      const [line] = this.pendingLines.splice(pendingIndex, 1);
+      return Promise.resolve(line);
+    }
     return new Promise((resolve, reject) => {
       const waiter = { prefix, resolve, reject, timer:null };
       waiter.timer = setTimeout(() => {
@@ -135,6 +145,13 @@ class NativeProgramMonitor {
     return true;
   }
 
+  rejectWaiters(message) {
+    for (const waiter of this.waiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error(message));
+    }
+  }
+
   async stop() {
     this.ready = false;
     this.enabled = false;
@@ -145,10 +162,8 @@ class NativeProgramMonitor {
       this.child = null;
       setTimeout(() => { try { if (!child.killed) child.kill(); } catch (_) {} }, 350);
     }
-    for (const waiter of this.waiters.splice(0)) {
-      clearTimeout(waiter.timer);
-      waiter.reject(new Error('Native Program Monitor stopped.'));
-    }
+    this.rejectWaiters('Native Program Monitor stopped.');
+    this.pendingLines = [];
     if (this.manifestPath) {
       try { fs.rmSync(path.dirname(this.manifestPath), { recursive:true, force:true }); } catch (_) {}
       this.manifestPath = null;
@@ -165,6 +180,7 @@ class NativeProgramMonitor {
     await this.stop();
     this.lastBounds = previousBounds;
     this.gstreamer = info.gstreamer;
+    this.pendingLines = [];
 
     const surface = this.ensureSurface();
     if (this.lastBounds) this.setBounds(this.lastBounds);
@@ -199,10 +215,16 @@ class NativeProgramMonitor {
       }
     });
     this.child.stderr.on('data', chunk => { this.stderr = (this.stderr + chunk).slice(-12000); });
-    this.child.on('exit', () => {
+    this.child.on('error', error => {
+      this.stderr = `${this.stderr}\n${error.message}`.slice(-12000);
+      this.rejectWaiters(`Native Program Monitor process error: ${error.message}`);
+    });
+    this.child.on('exit', (code, signal) => {
+      const wasReady = this.ready;
       this.ready = false;
       this.enabled = false;
       if (this.surface && !this.surface.isDestroyed()) this.surface.hide();
+      if (!wasReady) this.rejectWaiters(`Native Program Monitor exited before READY (${code ?? signal ?? 'unknown'}).`);
     });
 
     try {
