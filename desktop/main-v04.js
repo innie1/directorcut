@@ -3,6 +3,7 @@ const path = require('path');
 const { app, ipcMain, shell, dialog } = require('electron');
 const { attachNativeProgramMonitor } = require('./native-monitor-ipc');
 const { attachHomeHistory } = require('./home-history');
+const { attachRecordingStore } = require('./recording-store');
 const { renderCuts, wordsToSrt } = require('./media-utils');
 const { renderTimelineProject } = require('./timeline-renderer-stage4');
 const { analyzeFootage } = require('./footage-intelligence');
@@ -12,6 +13,7 @@ const ROOT = path.resolve(__dirname, '..');
 let attachedMainWindow = null;
 
 attachHomeHistory({ ipcMain, app, shell, dialog });
+attachRecordingStore({ ipcMain, app });
 
 // Register before main.js creates its BrowserWindow. Only the first top-level
 // DirectorCut window receives the native monitor. The monitor's own child surface
@@ -19,6 +21,16 @@ attachHomeHistory({ ipcMain, app, shell, dialog });
 app.on('browser-window-created', (_event, window) => {
   if (attachedMainWindow && !attachedMainWindow.isDestroyed()) return;
   attachedMainWindow = window;
+
+  // Recording Director only grants Chromium camera/microphone access to the main
+  // DirectorCut editor window. OS-level camera/microphone privacy controls still apply.
+  const mainContentsId = window.webContents.id;
+  window.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details = {}) => {
+    const mediaTypes = Array.isArray(details.mediaTypes) ? details.mediaTypes : [];
+    const supportedMedia = !mediaTypes.length || mediaTypes.every(type => type === 'audio' || type === 'video');
+    callback(Boolean(webContents && webContents.id === mainContentsId && permission === 'media' && supportedMedia));
+  });
+
   attachNativeProgramMonitor({ ipcMain, app, root:ROOT, window });
   window.once('closed', () => {
     if (attachedMainWindow === window) attachedMainWindow = null;
