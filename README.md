@@ -123,7 +123,18 @@ If GStreamer development packages are visible through `pkg-config`, CMake also b
 8. Models are replaceable; project/timeline formats are not model-owned.
 9. Media stays local unless the user explicitly chooses a network/cloud feature.
 
-See `docs/V0.3_TESTING.md` for the integrated test flow.
+## Testing
+
+```bash
+cd desktop && npm run check && npm test      # unit tests, no display needed
+node scripts/mock-ollama.js &                # stand-in local model
+cd desktop && npm run smoke                  # drives the real app end to end
+```
+
+`npm run smoke` launches the app, imports footage, splits, undoes, goes full
+screen, asks the Director to build a cut from a script, exports, and fails if the
+renderer logged a single error. See `docs/TESTING.md`; `docs/V0.3_TESTING.md`
+covers the older manual flow.
 
 ## Commercial note
 
