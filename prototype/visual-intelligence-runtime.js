@@ -100,18 +100,31 @@
     return model;
   }
 
+  // Assigning textContent replaces the node's children, which is a childList
+  // mutation inside `bin` - the very thing cardObserver watches to call this
+  // function. Writing unconditionally therefore re-queued the observer forever and
+  // starved the event loop the moment the media bin had its first card. Guard every
+  // write on a real change, and pause the observer while decorating, so decoration
+  // can never re-trigger itself.
+  let cardObserver = null;
+  const setText = (node, value) => { if (node.textContent !== value) node.textContent = value; };
   function decorateCards(){
-    for(const card of bin.querySelectorAll('.mediaLibraryItem[data-media-id]')){
-      const media=findMedia(card.dataset.mediaId),actions=card.querySelector('.mediaLibraryActions'),text=card.querySelector('.mediaLibraryText');
-      if(!media||!actions)continue;
-      let button=actions.querySelector('[data-media-action="visual"]');
-      if(!button){button=document.createElement('button');button.type='button';button.dataset.mediaAction='visual';button.title='Describe sampled shots with the selected local vision model';actions.appendChild(button);}
-      button.textContent=running.has(media.libraryId)?'Vision…':media.visualIntelligence?'Re-visualize':'Visual';
-      button.disabled=running.has(media.libraryId)||!media.path;
-      button.onclick=event=>{event.stopPropagation();runVisual(media);};
-      let label=text?.querySelector('.visualIntelMeta');
-      if(media.visualIntelligence&&text&&!label){label=document.createElement('small');label.className='visualIntelMeta';text.appendChild(label);}
-      if(label){label.textContent=`✦ ${summaryText(media)}`;label.hidden=!media.visualIntelligence;}
+    cardObserver?.disconnect();
+    try {
+      for(const card of bin.querySelectorAll('.mediaLibraryItem[data-media-id]')){
+        const media=findMedia(card.dataset.mediaId),actions=card.querySelector('.mediaLibraryActions'),text=card.querySelector('.mediaLibraryText');
+        if(!media||!actions)continue;
+        let button=actions.querySelector('[data-media-action="visual"]');
+        if(!button){button=document.createElement('button');button.type='button';button.dataset.mediaAction='visual';button.title='Describe sampled shots with the selected local vision model';actions.appendChild(button);}
+        setText(button,running.has(media.libraryId)?'Vision…':media.visualIntelligence?'Re-visualize':'Visual');
+        button.disabled=running.has(media.libraryId)||!media.path;
+        button.onclick=event=>{event.stopPropagation();runVisual(media);};
+        let label=text?.querySelector('.visualIntelMeta');
+        if(media.visualIntelligence&&text&&!label){label=document.createElement('small');label.className='visualIntelMeta';text.appendChild(label);}
+        if(label){setText(label,`✦ ${summaryText(media)}`);label.hidden=!media.visualIntelligence;}
+      }
+    } finally {
+      if (bin.isConnected) cardObserver?.observe(bin,{childList:true,subtree:true});
     }
   }
 
@@ -213,7 +226,8 @@
 
   input.addEventListener('input',scheduleSearch);
   searchBox.querySelector('button').onclick=()=>{searchRevision++;clearTimeout(searchTimer);input.value='';resultsRoot.innerHTML='';resultsRoot.hidden=true;input.focus();};
-  new MutationObserver(decorateCards).observe(bin,{childList:true,subtree:true});
+  cardObserver = new MutationObserver(decorateCards);
+  cardObserver.observe(bin,{childList:true,subtree:true});
   decorateCards();resolveEmbeddingModel();
   window.DirectorCutVisualIntelligenceRuntime={runVisual,renderSearch,jumpTo,directorContext,decorateCards,resolveEmbeddingModel,ensureSemanticIndex,semanticResults,lexicalResults,loadSemanticApi};
 })();

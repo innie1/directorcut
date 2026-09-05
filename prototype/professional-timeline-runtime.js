@@ -50,11 +50,21 @@
   }
 
   function niceStep(raw){const p=Math.pow(10,Math.floor(Math.log10(Math.max(.001,raw)))),n=raw/p;return(n<=1?1:n<=2?2:n<=5?5:10)*p}
-  function formatRulerTime(seconds){if(seconds>=3600)return typeof tc==='function'?tc(seconds).slice(0,8):`${(seconds/3600).toFixed(1)}h`;if(seconds>=60){const m=Math.floor(seconds/60),s=Math.round(seconds%60);return`${m}:${String(s).padStart(2,'0')}`;}if(seconds>=10)return`${Math.round(seconds)}s`;return`${seconds.toFixed(seconds<2?1:0)}s`;}
+  // Label precision has to follow the tick step, not the magnitude of the value.
+  // Choosing it from the value produced duplicate, wrong labels: at a 0.5s step the
+  // ruler rounded 2.5 / 3.0 / 3.5 to "3s" / "3s" / "4s".
+  function rulerDecimals(step){return step>=1?0:step>=.1?1:2;}
+  function formatRulerTime(seconds,step=1){
+    const d=rulerDecimals(step);
+    if(seconds>=3600)return typeof tc==='function'?tc(seconds).slice(0,8):`${(seconds/3600).toFixed(1)}h`;
+    if(seconds>=60){const m=Math.floor(seconds/60),rest=(seconds-m*60).toFixed(d);return`${m}:${(Number(rest)<10?'0':'')+rest}`;}
+    return`${seconds.toFixed(d)}s`;
+  }
   function renderRulerLabels(){
     if(!ruler)return;let layer=ruler.querySelector('.rulerLabels');if(!layer){layer=document.createElement('div');layer.className='rulerLabels';ruler.appendChild(layer);}layer.innerHTML='';
     const total=Math.max(Number(TL.duration(state.timeline)||0),Number(state.duration||0),1),width=Math.max(480,ruler.getBoundingClientRect().width||900),targetSeconds=total/(width/90),step=niceStep(targetSeconds);
-    for(let t=0;t<=total+step*.25;t+=step){const tick=document.createElement('span');tick.className='rulerTick';tick.style.left=`${Math.min(100,t/total*100)}%`;tick.innerHTML=`<i></i><b>${formatRulerTime(t)}</b>`;layer.appendChild(tick);}
+    // Multiply rather than accumulate so repeated += does not drift off the step grid.
+    for(let i=0;i*step<=total+step*.25;i++){const t=i*step,tick=document.createElement('span');tick.className='rulerTick';tick.style.left=`${Math.min(100,t/total*100)}%`;tick.innerHTML=`<i></i><b>${formatRulerTime(t,step)}</b>`;layer.appendChild(tick);}
   }
 
   function decorateOverwriteButtons(){

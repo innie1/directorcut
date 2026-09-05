@@ -14,3 +14,15 @@
 #composerAiState[data-mode="warming"],#composerAiState[data-mode="working"]{color:#9dbbe2}
 #composerAiState[data-mode="ready"]{color:#77cfa3}
 #composerAiState[data-mode="offline"]{color:#d68a90}
+
+/* index.html gives .composerFooter two spans laid out with space-between, but
+   composer-runtime.js inserts #composerAiState between them at runtime. With no gap
+   the AI state and the autosave label render flush against each other ("AI
+   readyAutosaved"), and the mode text wrapped onto a second line. */
+.composerFooter{gap:8px;align-items:center}
+.composerFooter>span{white-space:nowrap}
+/* Only the mode label may truncate; the AI state and autosave label are short and
+   must stay readable. The 37px side padding left too little room for all three. */
+#composerMode{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#composerAiState,#autosaveState{flex:0 0 auto}
+.right .composerFooter{padding-left:8px;padding-right:8px}
