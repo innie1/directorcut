@@ -68,18 +68,22 @@ async function detectGStreamer() {
   ];
   const hardware = checks.filter(([, re]) => re.test(registry)).map(([name]) => name);
   const gesLaunch = await findInstalledCommand('ges-launch-1.0', ['--help']);
+  const nativeGesEnabled = process.env.DIRECTORCUT_NATIVE_GES === '1';
+  const nativeGesReady = Boolean(gesLaunch && nativeGesEnabled);
 
   return {
     available:true,
-    ges:Boolean(gesLaunch),
+    ges:nativeGesReady,
     version,
     gstLaunch:launch.command,
     gesLaunch:gesLaunch?.command || null,
     hardware,
     playbackBackend:'chromium',
-    nativeBackendReady:Boolean(gesLaunch),
+    nativeBackendReady:nativeGesReady,
     note:gesLaunch
-      ? 'GStreamer Editing Services detected; native embedded preview bridge can use this installation.'
+      ? nativeGesEnabled
+        ? 'GStreamer Editing Services detected and native embedded preview is enabled.'
+        : 'GStreamer Editing Services detected. DirectorCut is using the stable Chromium preview by default; set DIRECTORCUT_NATIVE_GES=1 only when testing the experimental native preview.'
       : 'GStreamer detected but GES is missing.'
   };
 }
