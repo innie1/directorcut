@@ -85,8 +85,21 @@
     while (messages.length > 4) messages.shift()?.remove();
   }
 
-  function hideWelcome() { overlay?.classList.add('hidden'); }
-  function showWelcome() { overlay?.classList.remove('hidden'); }
+  function hideWelcome() {
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.style.pointerEvents = 'none';
+  }
+
+  function showWelcome() {
+    if (!overlay) return;
+    overlay.hidden = false;
+    overlay.removeAttribute('aria-hidden');
+    overlay.style.pointerEvents = '';
+    overlay.classList.remove('hidden');
+  }
 
   // The composer belongs to Director; it should never float over the timeline.
   if (rightPanel && composer) rightPanel.appendChild(composer);
@@ -107,7 +120,29 @@
   const welcomeImport = document.querySelector('#welcomeImport');
   const welcomeScript = document.querySelector('#welcomeScript');
   const welcomeOpen = document.querySelector('#welcomeOpen');
-  welcomeImport?.addEventListener('click', () => document.querySelector('#pickVideo')?.click());
+  const pickVideo = document.querySelector('#pickVideo');
+
+  // The Windows file dialog temporarily takes focus away from Electron. Hide the
+  // full-screen welcome layer before opening it, then restore the welcome state only
+  // when the user cancels. A successful import leaves the editor fully interactive.
+  if (pickVideo && typeof pickVideo.onclick === 'function') {
+    const originalPickVideo = pickVideo.onclick;
+    pickVideo.onclick = async function (...args) {
+      hideWelcome();
+      try {
+        return await originalPickVideo.apply(this, args);
+      } finally {
+        const imported = Boolean(state?.media?.path || state?.media?.url);
+        if (imported) hideWelcome();
+        else showWelcome();
+      }
+    };
+  }
+
+  welcomeImport?.addEventListener('click', () => {
+    hideWelcome();
+    pickVideo?.click();
+  });
   welcomeScript?.addEventListener('click', () => { document.querySelector('#pickScript')?.click(); hideWelcome(); });
   welcomeOpen?.addEventListener('click', () => document.querySelector('#openProject')?.click());
 
@@ -121,7 +156,10 @@
     };
   }
 
-  videoEl?.addEventListener('loadedmetadata', syncAspect);
+  videoEl?.addEventListener('loadedmetadata', () => {
+    hideWelcome();
+    syncAspect();
+  });
 
   if (typeof loadProjectObject === 'function') {
     const originalLoadProject = loadProjectObject;
