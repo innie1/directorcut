@@ -142,7 +142,51 @@
         if (linkedLeft && linkedRight) state.timeline = TL.rollBoundary(state.timeline,linkedLeft,linkedRight,Number(op.delta)||0);
         changed++; continue;
       }
-      if (op.type === 'add_keyframe') { state.timeline = TL.addKeyframe(state.timeline,String(op.clipId),String(op.property),Number(op.time)||video.currentTime,Number(op.value)); changed++; }
+      if (op.type === 'add_keyframe') { state.timeline = TL.addKeyframe(state.timeline,String(op.clipId),String(op.property),Number(op.time)||video.currentTime,Number(op.value)); changed++; continue; }
+
+      // ---- authoring operations ------------------------------------------
+      const DO = window.DirectorOps;
+      if (!DO) continue;
+      if (op.type === 'add_clip') {
+        const media = DO.resolveMedia(state.mediaLibrary || [], op.media);
+        if (!media) { say?.(`I could not find "${op.media || 'that clip'}" in the media bin.`); continue; }
+        state.timeline = DO.addClip(state.timeline, media, { mode:op.mode, time:Number.isFinite(Number(op.time)) ? Number(op.time) : undefined });
+        if (!state.media) state.media = media;
+        changed++; continue;
+      }
+      if (op.type === 'add_caption') {
+        state.timeline = DO.addCaption(state.timeline, { text:op.text, start:op.start, duration:op.duration, x:op.x, y:op.y });
+        changed++; continue;
+      }
+      if (op.type === 'add_title') {
+        state.timeline = DO.addTitle(state.timeline, { text:op.text, start:op.start, duration:op.duration, motion:op.preset, x:op.x, y:op.y });
+        changed++; continue;
+      }
+      if (op.type === 'add_motion') {
+        const before = JSON.stringify(state.timeline);
+        state.timeline = DO.applyMotion(state.timeline, op.clipId, op.preset, { duration:op.duration });
+        if (JSON.stringify(state.timeline) !== before) changed++;
+        continue;
+      }
+      if (op.type === 'add_transition') {
+        state.timeline = (op.leftId && op.rightId)
+          ? DO.addTransition(state.timeline, op.leftId, op.rightId, op.transition, op.duration)
+          : DO.addTransitionsBetweenAll(state.timeline, op.transition, op.duration);
+        changed++; continue;
+      }
+      if (op.type === 'assemble_from_script') {
+        const scenes = (state.scenes || []).length
+          ? state.scenes
+          : String(state.script || '').split(/\n\s*\n/).map(text => ({ text:text.trim() })).filter(scene => scene.text);
+        const built = DO.assembleFromScript(state.timeline, {
+          scenes, library:state.mediaLibrary || [], captions:op.captions !== false,
+          transition:op.transition || '', perScene:Number(op.duration) || 0
+        });
+        if (!built.placed) { say?.('I need a script and at least one clip in the media bin before I can assemble a cut.'); continue; }
+        state.timeline = built.timeline;
+        say?.(`Assembled ${built.placed} scene${built.placed===1?'':'s'}${built.captioned?` with ${built.captioned} caption${built.captioned===1?'':'s'}`:''}${built.transitions?` and ${built.transitions} transition${built.transitions===1?'':'s'}`:''}.`);
+        changed++; continue;
+      }
     }
     if (changed) {
       renderTimeline(); markDirty();

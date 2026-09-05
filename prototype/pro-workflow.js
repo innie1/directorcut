@@ -144,7 +144,10 @@
   }
   const operationName = op => ({
     seek:'Move playhead',split_at:'Split clip',remove_range:'Remove selected range',add_marker:'Add marker',move_clip:'Move clip',
-    add_keyframe:'Add keyframe',slip_clip:'Slip clip',slide_clip:'Slide clip',roll_boundary:'Roll edit'
+    add_keyframe:'Add keyframe',slip_clip:'Slip clip',slide_clip:'Slide clip',roll_boundary:'Roll edit',
+    add_clip:`Add ${op?.media || 'clip'} to the timeline`,add_caption:`Caption "${String(op?.text||'').slice(0,32)}"`,
+    add_title:`Title "${String(op?.text||'').slice(0,32)}"`,add_motion:`Animate · ${op?.preset||'motion'}`,
+    add_transition:`Transition · ${op?.transition||'dissolve'}`,assemble_from_script:'Build the cut from the script'
   })[op?.type] || 'Timeline edit';
 
   function clearOperationHighlight() {
@@ -201,7 +204,11 @@
           request:q,workspaceMode:state.workspaceMode,directorPolicy:state.directorPolicy,model:state.selectedModel,
           history:state.conversation.slice(-12),currentTime:snap(video?.currentTime||0),
           selection:selected?{trackId:selected.track.id,clip:selected.clip}:null,
-          project:{name:state.name,duration:Math.max(state.duration,TL.duration(state.timeline)),timeline:state.timeline,learned:state.edits.slice(-24)},
+          project:{name:state.name,duration:Math.max(state.duration,TL.duration(state.timeline)),timeline:state.timeline,learned:state.edits.slice(-24),
+            // The Director cannot place a clip it cannot see, and cannot assemble a
+            // script it was never shown. Both were missing from this payload.
+            mediaLibrary:(state.mediaLibrary||[]).slice(0,40).map(m=>({libraryId:m.libraryId,name:m.name,duration:m.duration,hasAudio:m.hasAudio!==false})),
+            scenes:(state.scenes||[]).slice(0,60).map(scene=>({text:String(scene.text||'').slice(0,400),duration:scene.dur||scene.duration||null}))},
           transcript_excerpt:(state.transcript?.text||state.script||'').slice(0,12000),
           attachments:(state.attachments||[]).map(a=>({name:a.name,kind:a.kind,path:(a.kind==='image'||a.kind==='video')?a.path:null,text:a.text?.slice?.(0,5000)||null}))
         };

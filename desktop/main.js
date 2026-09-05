@@ -56,7 +56,11 @@ function safeAttachment(filePath) {
 function sanitizeOperations(operations, payload) {
   if (!Array.isArray(operations)) return [];
   const duration = Math.max(0, Number(payload?.project?.duration || 0));
-  const allowed = new Set(['seek','split_at','remove_range','add_marker','move_clip','add_keyframe','slip_clip','slide_clip','roll_boundary']);
+  const allowed = new Set(['seek','split_at','remove_range','add_marker','move_clip','add_keyframe','slip_clip','slide_clip','roll_boundary',
+    'add_clip','add_caption','add_title','add_motion','add_transition','assemble_from_script']);
+  const MOTION_PRESETS = new Set(['fade-in','fade-out','zoom-in','zoom-out','ken-burns','slide-left','slide-right','slide-up','pop-in','drift-up','spin-in']);
+  const TRANSITIONS = new Set(['dissolve','dip-black','dip-white','slide-left','slide-right','slide-up','slide-down']);
+  const text = (value, max) => String(value == null ? '' : value).replace(/\s+/g,' ').trim().slice(0, max);
   const clampTime = value => { const v = Math.max(0, Number(value) || 0); return duration > 0 ? Math.min(duration, v) : v; };
   const clampDelta = value => Math.max(-duration || -86400, Math.min(duration || 86400, Number(value) || 0));
   return operations.slice(0, 32).flatMap(op => {
@@ -83,6 +87,44 @@ function sanitizeOperations(operations, payload) {
       if (!op.clipId || !op.property || !Number.isFinite(Number(op.value))) return [];
       if (!['opacity','scale','volume'].includes(String(op.property))) return [];
       return [{ type:op.type, clipId:String(op.clipId), property:String(op.property), time:clampTime(op.time), value:Number(op.value) }];
+    }
+    // ---- authoring operations -------------------------------------------
+    // These build a cut rather than trim one, so times are not clamped to the
+    // current duration: adding past the end is how a timeline grows.
+    if (op.type === 'add_clip') {
+      const mode = ['append','insert','overwrite'].includes(String(op.mode)) ? String(op.mode) : 'append';
+      const out = { type:op.type, media:text(op.media, 200), mode };
+      if (Number.isFinite(Number(op.time))) out.time = Math.max(0, Number(op.time));
+      return [out];
+    }
+    if (op.type === 'add_caption' || op.type === 'add_title') {
+      const content = text(op.text, 240);
+      if (!content) return [];
+      const out = { type:op.type, text:content,
+        start:Math.max(0, Number(op.start ?? op.time) || 0),
+        duration:Math.min(600, Math.max(.2, Number(op.duration) || 3)) };
+      if (Number.isFinite(Number(op.x))) out.x = Math.max(0, Math.min(1, Number(op.x)));
+      if (Number.isFinite(Number(op.y))) out.y = Math.max(0, Math.min(1, Number(op.y)));
+      if (op.type === 'add_title') out.preset = MOTION_PRESETS.has(String(op.preset)) ? String(op.preset) : 'pop-in';
+      return [out];
+    }
+    if (op.type === 'add_motion') {
+      if (!op.clipId || !MOTION_PRESETS.has(String(op.preset))) return [];
+      const out = { type:op.type, clipId:String(op.clipId), preset:String(op.preset) };
+      if (Number.isFinite(Number(op.duration))) out.duration = Math.max(.05, Number(op.duration));
+      return [out];
+    }
+    if (op.type === 'add_transition') {
+      const style = TRANSITIONS.has(String(op.transition)) ? String(op.transition) : 'dissolve';
+      const out = { type:op.type, transition:style, duration:Math.min(5, Math.max(.1, Number(op.duration) || .5)) };
+      if (op.leftId && op.rightId) { out.leftId = String(op.leftId); out.rightId = String(op.rightId); }
+      return [out];
+    }
+    if (op.type === 'assemble_from_script') {
+      return [{ type:op.type,
+        captions: op.captions !== false,
+        transition: TRANSITIONS.has(String(op.transition)) ? String(op.transition) : '',
+        duration: Math.min(60, Math.max(0, Number(op.duration) || 0)) }];
     }
     return [];
   });
@@ -186,7 +228,7 @@ ipcMain.handle('ai:warm', async (_e, model) => { try { return await warmModel(mo
 ipcMain.handle('director:ask', async (_e, payload) => {
   const workspaceMode = payload.workspaceMode === 'Director' ? 'Director' : 'Manual';
   const directorPolicy = ['Ask','Co-edit','Auto'].includes(payload.directorPolicy) ? payload.directorPolicy : 'Co-edit';
-  const system = `You are DirectorCut, a professional video editor and natural conversational assistant running locally on the user's computer.\n\nThe workspace has two modes:\n- Manual: chat, explain, search, analyze, and advise. NEVER create editing operations.\n- Director: editing tasks may return typed operations. Ask means never mutate; Co-edit proposes operations; Auto may perform validated operations.\n\nClassify the user's message as conversation, analysis, search, or edit_task. A normal conversation must stay a conversation even when a video project is open. Only return edit operations when the user clearly requests an editing action and workspaceMode is Director. Prefer the smallest reversible edit. Never claim an operation happened until the host applies it. Use current time, selection, transcript and timeline IDs instead of inventing context. Keep ordinary conversation natural and concise.\n\nSupported edit operation types: seek, split_at, remove_range, add_marker, move_clip, slip_clip, slide_clip, roll_boundary, add_keyframe.\n\nInstalled skills:\n${skillContext()}`;
+  const system = `You are DirectorCut, a professional video editor and natural conversational assistant running locally on the user's computer.\n\nThe workspace has two modes:\n- Manual: chat, explain, search, analyze, and advise. NEVER create editing operations.\n- Director: editing tasks may return typed operations. Ask means never mutate; Co-edit proposes operations; Auto may perform validated operations.\n\nClassify the user's message as conversation, analysis, search, or edit_task. A normal conversation must stay a conversation even when a video project is open. Only return edit operations when the user clearly requests an editing action and workspaceMode is Director. Prefer the smallest reversible edit. Never claim an operation happened until the host applies it. Use current time, selection, transcript and timeline IDs instead of inventing context. Keep ordinary conversation natural and concise.\n\nTrimming operations: seek, split_at, remove_range, add_marker, move_clip, slip_clip, slide_clip, roll_boundary, add_keyframe.\nAuthoring operations, for building a cut rather than trimming one:\n- add_clip {media, mode: append|insert|overwrite, time} - place a bin item on the timeline. 'media' may be a library id or a file name; project.mediaLibrary lists what is available. Nothing can be edited until a clip is placed.\n- add_caption {text, start, duration, x, y} - a subtitle on the caption track.\n- add_title {text, start, duration, preset} - a caption with a motion preset applied.\n- add_motion {clipId, preset, duration} - animate an existing clip. Presets: fade-in, fade-out, zoom-in, zoom-out, ken-burns, slide-left, slide-right, slide-up, pop-in, drift-up, spin-in.\n- add_transition {leftId, rightId, transition, duration} - between two clips; omit the ids to place one at every cut. Types: dissolve, dip-black, dip-white, slide-left, slide-right, slide-up, slide-down.\n- assemble_from_script {captions, transition, duration} - build a whole rough cut from project.scenes and the media bin in one step. Prefer this when the user asks for a video from a script; do not emit dozens of add_clip operations by hand.\n\nInstalled skills:\n${skillContext()}`;
   const status = await detectOllama();
   if (status.running && payload.model) {
     try {

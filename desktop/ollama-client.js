@@ -64,9 +64,14 @@ function outputSchema() {
         items:{
           type:'object',
           properties:{
-            type:{ type:'string', enum:['seek','split_at','remove_range','add_marker','move_clip','slip_clip','slide_clip','roll_boundary','add_keyframe'] },
+            type:{ type:'string', enum:[
+              'seek','split_at','remove_range','add_marker','move_clip','slip_clip','slide_clip','roll_boundary','add_keyframe',
+              'add_clip','add_caption','add_title','add_motion','add_transition','assemble_from_script'] },
             time:{type:'number'}, start:{type:'number'}, end:{type:'number'}, clipId:{type:'string'}, newStart:{type:'number'}, delta:{type:'number'},
-            leftId:{type:'string'}, rightId:{type:'string'}, property:{type:'string',enum:['opacity','scale','volume']}, value:{type:'number'}
+            leftId:{type:'string'}, rightId:{type:'string'}, property:{type:'string',enum:['opacity','scale','volume']}, value:{type:'number'},
+            media:{type:'string'}, mode:{type:'string',enum:['append','insert','overwrite']}, text:{type:'string'},
+            duration:{type:'number'}, x:{type:'number'}, y:{type:'number'},
+            preset:{type:'string'}, transition:{type:'string'}, captions:{type:'boolean'}
           },
           required:['type']
         }
