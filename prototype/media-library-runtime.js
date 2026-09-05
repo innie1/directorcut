@@ -147,10 +147,22 @@
     if (!items?.length) return;
     const valid = items.filter(item => item && !item.error);
     const errors = items.filter(item => item?.error);
+    const hadTimelineVideo = hasTimelineVideo();
     const added = addLibraryItems(valid, { select:!state.selectedLibraryId });
-    if (!hasTimelineVideo() && added[0]) setActiveSource(added[0], true);
-    else renderLibrary();
-    toast(`${added.length} media item${added.length === 1 ? '' : 's'} imported${errors.length ? ` · ${errors.length} failed` : ''}`);
+    let seeded = false;
+    if (!hadTimelineVideo && added[0]) {
+      setActiveSource(added[0], true);
+      // An empty timeline is a dead end: the preview shows a source that is not in
+      // the cut and the Director has nothing to edit. Seeding the first import is
+      // not "replacing the edit" - there is no edit yet - so place it automatically.
+      // Later imports still wait in the bin until the user adds them deliberately.
+      addMediaToTimeline(added[0], 'append');
+      seeded = true;
+    } else renderLibrary();
+    const failed = errors.length ? ` · ${errors.length} failed` : '';
+    toast(seeded
+      ? `${added[0].name} added to the timeline${added.length > 1 ? ` · ${added.length - 1} more in the bin` : ''}${failed}`
+      : `${added.length} media item${added.length === 1 ? '' : 's'} imported${failed}`);
   }
 
   async function importBrowserFiles(files) {

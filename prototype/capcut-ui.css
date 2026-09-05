@@ -1,0 +1,231 @@
+/* DirectorCut UI pass: CapCut-style editor shell.
+
+   Loaded last, so it restyles without renaming anything. Every selector the
+   runtime modules query keeps its id/class; this file only changes how they look.
+
+   The three things that make an editor feel like CapCut:
+     1. Legible, uniform type. The panels had 7-9px labels; nothing here is under 10px.
+     2. Real hit targets. Controls are >=28px tall with obvious hover/active states.
+     3. A timeline that reads as the primary surface - tall lanes, rounded clip
+        cards, a playhead with a head, and a grouped toolbar. */
+
+:root{
+  --bg:#0b0c0f;
+  --panel:#131519;
+  --panel2:#1a1d22;
+  --panel3:#22262c;
+  --line:#262a31;
+  --line2:#343943;
+  --text:#eff2f6;
+  --muted:#98a2b0;
+  --dim:#78828f;
+  --accent:#4d8dff;
+  --accent-2:#8fb6ff;
+  --accent-soft:#16243c;
+  --ok:#4fcf94;
+  --warn:#e3bd64;
+  --bad:#f0767d;
+  --r-sm:6px; --r-md:9px; --r-lg:13px;
+  --dc-timeline-height:308px;
+  /* The 188/258 panels truncated card buttons ("Overwri") and wrapped the composer
+     placeholder. CapCut gives both rails more room; the centre still keeps >1000px. */
+  --dc-left:212px;
+  --dc-right:300px;
+  --dc-right-user:300px;
+}
+
+body{font-size:13px;color:var(--text);background:var(--bg)}
+
+/* ---------- controls ---------------------------------------------------- */
+button,select,input,textarea{border-radius:var(--r-md)}
+button,select,input{background:var(--panel2);border:1px solid var(--line2);color:#dde3ec}
+button{min-height:30px;padding:6px 11px;font-weight:500}
+button:hover{background:var(--panel3);border-color:#414753}
+button:active{transform:translateY(.5px)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,
+summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.primary{background:var(--accent)!important;border-color:var(--accent)!important;color:#06111f!important;font-weight:700}
+.primary:hover{background:#5f9aff!important;border-color:#5f9aff!important}
+.quietButton{background:transparent;border-color:transparent;color:var(--muted)}
+.quietButton:hover{background:var(--panel2);color:var(--text)}
+
+/* ---------- header ------------------------------------------------------ */
+.appHeader{height:54px;padding:0 14px;background:#0e1014;border-bottom:1px solid var(--line);gap:10px}
+.brand{font-size:14px;letter-spacing:1.2px}
+.brand span{color:var(--accent)}
+.projectName{width:210px;font-size:13px;color:#c2cad5;border-radius:var(--r-sm)}
+.projectName:hover{background:#161a20}
+.exportButton{padding:8px 20px!important;font-size:13px}
+.headerMenu>summary{min-height:30px;display:grid;place-items:center}
+
+/* ---------- left media panel ------------------------------------------- */
+.left{padding:12px 11px;background:var(--panel);border-right:1px solid var(--line)}
+.panelTitle{font-size:10.5px;letter-spacing:1.3px;color:var(--dim);margin:2px 4px 9px}
+.sectionHeading strong{font-size:12px}
+.miniButton{font-size:11px;color:var(--muted);min-height:26px}
+.miniButton:hover{background:var(--panel2);color:var(--text)}
+.librarySection small{font-size:11px;color:var(--dim);line-height:1.5}
+.wideImport{background:var(--accent-soft)!important;border-color:#2f4a72!important;color:#cfe0ff!important;font-weight:600;min-height:34px}
+.wideImport:hover{background:#1c3253!important;border-color:#41628f!important}
+
+/* CapCut-style media cards: wide thumbnail on top, then name, then actions. */
+.mediaBin{gap:9px;max-height:min(42vh,420px)}
+.mediaBinEmpty{font-size:11px;padding:14px 12px;border-radius:var(--r-md)}
+.mediaLibraryItem{grid-template-columns:minmax(0,1fr)!important;gap:7px!important;padding:8px!important;
+  border-radius:var(--r-md)!important;background:var(--panel2)!important;border-color:var(--line)!important}
+.mediaLibraryItem:hover{border-color:#3d4757!important;background:#1e222a!important}
+.mediaLibraryItem.selected{border-color:var(--accent)!important;background:#151d2b!important;
+  box-shadow:0 0 0 1px rgba(77,141,255,.25) inset!important}
+.mediaLibraryThumb{grid-row:auto!important;width:100%!important;height:74px!important;
+  border-radius:var(--r-sm)!important;font-size:13px!important;border-color:#2c323c!important;
+  background:linear-gradient(150deg,#232c39,#0e1218)!important}
+.mediaLibraryText strong{font-size:12px!important;color:#e9eef5!important}
+.mediaLibraryText small{font-size:10.5px!important;color:var(--dim)!important}
+.mediaLibraryText .mediaIntelligence{font-size:10px!important;color:#8fc0b3!important}
+.mediaLibraryActions{grid-column:1!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:4px!important;flex-wrap:nowrap!important}
+.mediaLibraryActions button{font-size:10.5px!important;min-height:28px!important;padding:4px 6px!important;
+  border-radius:var(--r-sm)!important;background:#1f242c!important;border-color:#333a45!important;color:#c3ccd9!important}
+.mediaLibraryActions button:hover{background:#2a313b!important;color:#fff!important;border-color:#4a5464!important}
+/* "Add" is the one action a new user needs; give it the full first row. */
+.mediaLibraryActions [data-media-action="append"]{grid-column:1/-1!important;background:var(--accent-soft)!important;
+  border-color:#3b5c8c!important;color:#d8e7ff!important;font-weight:650!important}
+.mediaLibraryActions [data-media-action="append"]:hover{background:#1d3455!important;border-color:#4f76ab!important}
+.mediaLibraryActions [data-media-action="preview"]{display:block!important}
+
+.settingsDrawer>summary{font-size:12px;color:var(--muted);min-height:30px;display:flex;align-items:center}
+.settingsGroup{border-radius:var(--r-md);background:var(--panel2);border-color:var(--line)}
+.settingsGroup strong{font-size:12px}
+.settingsGroup small{font-size:10.5px!important;color:var(--dim)!important;line-height:1.5}
+.settingsGroup select,.settingsGroup button{font-size:11.5px!important;min-height:30px}
+
+/* ---------- monitor + transport ---------------------------------------- */
+.monitor{background:#07080b}
+.monitorBadges span{font-size:10px;padding:4px 8px;border-radius:var(--r-sm);color:var(--muted)}
+.emptyMonitor span{font-size:12px}
+.emptyMonitor b{font-size:14px}
+
+.simplifiedTransport{height:52px!important;padding:8px 12px!important;gap:7px!important;
+  background:#0f1116;border-color:var(--line)}
+.simplifiedTransport button,.advancedTools>summary{font-size:11.5px!important;min-height:32px!important;padding:6px 10px!important}
+#time{font-size:12.5px!important;min-width:96px!important;color:#dbe2ea;letter-spacing:.2px}
+/* Total duration sits next to the playhead time, the way an NLE reads: 1.5s / 6.0s */
+#timeTotal{font:12.5px ui-monospace,SFMono-Regular,Consolas,monospace;color:#6f7a88;margin-right:6px}
+#programPlayPause{width:36px!important;height:32px!important;font-size:13px!important;
+  background:var(--accent)!important;color:#06111f!important;border-color:var(--accent)!important}
+#programPlayPause:hover{background:#5f9aff!important}
+.frameStep{width:32px!important;height:32px!important;font-size:19px!important;color:#a4b0c0!important;background:var(--panel2)!important}
+.primaryTool{background:#22303f!important;border-color:#3d5a7d!important;color:#dbe9fa!important}
+.toolGroup button{background:var(--panel2)}
+.toolGroup .active{background:var(--panel3);color:#fff}
+
+/* ---------- right Director panel ---------------------------------------- */
+.right{padding:12px 11px;background:var(--panel);border-left:1px solid var(--line)}
+.directorHead b{font-size:11.5px;letter-spacing:.8px}
+.directorHead small{font-size:10px;color:var(--dim)}
+.rightPaneTabs button{font-size:11.5px!important;min-height:30px}
+.rightPaneTabs button.active{background:var(--panel3)!important;color:#fff!important}
+.directorPolicy{border-radius:var(--r-md);background:#0d0f14;border-color:var(--line)}
+.directorPolicy button{font-size:11.5px!important;min-height:30px;padding:7px 5px!important;color:var(--muted)}
+.directorPolicy button.active{background:var(--panel3);color:#fff;font-weight:600}
+.policyHelp{font-size:10.5px!important;line-height:1.5!important;max-height:none!important;color:var(--dim)}
+.message{font-size:11.5px!important;line-height:1.5!important;padding:9px 11px!important;border-radius:10px}
+.message.ai{background:var(--panel2);border-color:var(--line)}
+.message.user{background:#1a2a41;border-color:#2a415f}
+.proposal{border-radius:var(--r-md)!important;border-color:#3d5c86!important;background:#141c27!important;font-size:11.5px!important}
+.proposal b{font-size:12px}
+.proposal small{font-size:10.5px;color:var(--dim)}
+.runStep{font-size:10.5px!important}
+.runStep small{font-size:10px!important}
+.runHeader strong{font-size:11.5px!important}
+
+/* ---------- composer ---------------------------------------------------- */
+.right .floatingComposer{background:var(--panel2)!important;border-color:var(--line2)!important;border-radius:var(--r-lg)!important;padding:8px!important}
+.right .floatingComposer:focus-within{border-color:#41556f!important}
+.right .composerRow{grid-template-columns:34px 1fr 34px!important;gap:6px!important}
+.right .plusButton,.right .sendButton{width:34px!important;height:34px!important;font-size:18px!important;min-height:0}
+.sendButton{background:var(--accent)!important;color:#06111f!important;border-color:var(--accent)!important}
+.sendButton:hover{background:#5f9aff!important}
+.right .composerRow textarea{font-size:12px!important;height:38px!important;min-height:38px!important}
+.right .composerFooter{font-size:10px!important;color:var(--dim)}
+/* The timeline status bar already reports autosave state; repeating it here crowded
+   the mode and AI labels out of a 300px rail. */
+.right .composerFooter #autosaveState{display:none}
+
+/* ---------- timeline ---------------------------------------------------- */
+.timeline{background:#0a0c10;border-top:1px solid var(--line);padding-top:8px!important}
+.timelineTop{height:40px!important;background:#0a0c10!important;gap:8px}
+.timelineTop b{font-size:10.5px;letter-spacing:1.1px;color:var(--muted)}
+/* Timeline actions read as one grouped toolbar rather than scattered links. */
+.timelineTop button{font-size:11.5px!important;min-height:30px!important;padding:5px 10px!important;
+  background:var(--panel2)!important;border:1px solid var(--line2)!important;border-radius:var(--r-sm)!important;color:#c6cedb!important}
+.timelineTop button:hover{background:var(--panel3)!important;color:#fff!important;border-color:#454c59!important}
+.timelineTop button:disabled{opacity:.38!important}
+.timelineTop #status{font-size:10.5px;color:var(--dim)}
+.timelineZoom{background:var(--panel2);border-color:var(--line2);border-radius:var(--r-sm);padding:3px 6px}
+.timelineZoom button{font-size:13px!important;color:var(--muted)!important;min-height:24px!important;padding:2px 7px!important}
+.timelineZoom input{height:20px}
+.timelineLinkGroup button{font-size:11.5px!important}
+
+.ruler{height:26px!important;border-bottom:1px solid var(--line)}
+.rulerTick i{height:9px;background:#525b69}
+.rulerTick b{font-size:10px!important;color:#8b95a4!important;top:4px!important;left:5px!important}
+
+.track{height:60px!important;--track-clip-height:48px}
+.trackLabel{font-size:11px!important;padding:8px 9px!important;background:#101318;color:#9aa5b3;border-right:1px solid var(--line)}
+.trackLabel small{font-size:10px;color:var(--dim)}
+.trackLabel>span{max-width:64px!important}
+.lane{background:#0f1217;border-bottom:1px solid #1c2027;min-height:60px!important}
+
+/* Clips: rounded cards with a readable name plate, like CapCut's timeline. */
+.clip{top:6px!important;height:48px!important;border-radius:7px!important;padding:5px 8px!important;
+  font-size:11px!important;border:1px solid #3f4d63;background:#27405f}
+.clip:hover{filter:brightness(1.1)}
+.clip.audio{background:#26463c}
+.clip.caption{background:#3a3150!important}
+.clip.graphic{background:#493f28}
+.clip.selected{outline:2px solid var(--accent)!important;outline-offset:0!important;
+  box-shadow:0 0 0 1px rgba(77,141,255,.5) inset,0 3px 14px rgba(77,141,255,.2)!important}
+.clipName{font-size:11px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.85)}
+.thumbStrip{opacity:.5;border-radius:6px}
+.waveformImg{opacity:.5}
+
+/* One continuous playhead, with the grab head on the topmost lane only. */
+.playhead{width:2px!important;background:#fff!important;box-shadow:0 0 8px rgba(255,255,255,.5)!important;z-index:12!important}
+.track:first-child .lane .playhead::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:12px;height:12px;border-radius:3px;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.6)}
+.splitMarker{background:var(--warn)!important}
+
+.clipQuickActions{background:var(--panel2);border-color:var(--line2);border-radius:var(--r-sm)}
+.clipQuickActions button{font-size:11px!important;min-height:28px!important}
+.editorToast{font-size:11.5px;padding:9px 14px;border-radius:var(--r-md)}
+.clipContextMenu{border-radius:var(--r-md)}
+.clipContextMenu button{font-size:12px;padding:9px 10px}
+
+/* ---------- welcome / home --------------------------------------------- */
+.welcomeCard h1{font-size:30px}
+.welcomeCard>p{font-size:13px;color:var(--muted)}
+.welcomeActions button{border-radius:var(--r-lg);background:var(--panel2);border-color:var(--line2)}
+.welcomeActions button:hover{border-color:#48627f!important;background:var(--panel3)!important}
+.welcomeActions .welcomePrimary{background:#152238!important;border-color:#3a5c8b!important}
+.welcomeActions b{font-size:14px}
+.welcomeActions small{font-size:11px!important;color:var(--dim)!important;line-height:1.45}
+.welcomeActions span{font-size:20px;color:var(--accent-2)}
+.welcomeHint{font-size:11px!important;color:var(--dim)}
+
+/* ---------- transcript -------------------------------------------------- */
+.transcriptSummary b{font-size:12px}
+.transcriptSummary small{font-size:10px;letter-spacing:1px;color:var(--dim)}
+.transcriptSearch input,.transcriptSearch button{font-size:11.5px!important;min-height:30px}
+#transcript{font-size:12px!important;color:#b3bcc9}
+
+/* ---------- shortcuts sheet -------------------------------------------- */
+.shortcutRow{font-size:12px}
+.shortcutRow kbd{font-size:11px}
+.shortcutHint{font-size:11px!important}
+
+@media(max-width:1200px){
+  :root{--dc-left:188px;--dc-right:262px;--dc-right-user:262px}
+  .mediaLibraryThumb{height:62px!important}
+  #time{min-width:88px!important}
+}
