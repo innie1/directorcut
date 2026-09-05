@@ -58,7 +58,9 @@
 // Load final runtime layers after the legacy editor handlers are installed.
 (() => {
   function load(src, done) {
-    if (document.querySelector(`script[data-runtime="${src}"]`)) { done?.(); return; }
+    // index.html loads some of these statically without data-runtime, so match both
+    // forms; otherwise the runtime is parsed and executed a second time.
+    if (document.querySelector(`script[data-runtime="${src}"], script[src="${src}"]`)) { done?.(); return; }
     const script = document.createElement('script'); script.src = src; script.dataset.runtime = src; script.onload = () => done?.(); document.body.appendChild(script);
   }
   const loadUndoRuntime = () => load('edit-undo-runtime.js');

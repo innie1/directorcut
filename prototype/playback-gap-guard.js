@@ -40,7 +40,7 @@
       gapMuted = true;
     }
     video.muted = true;
-    video.classList.add('sourceTimelineHidden','timelineHardGap');
+    video.classList.add('timelineHardGap');
     video.style.visibility = 'hidden';
     overlay.hidden = false;
     viewport.classList.add('timelineGapActive');
@@ -48,7 +48,7 @@
 
   function leaveGap() {
     restoreGapMute();
-    video.classList.remove('sourceTimelineHidden','timelineHardGap');
+    video.classList.remove('timelineHardGap');
     video.style.visibility = 'visible';
     overlay.hidden = true;
     viewport.classList.remove('timelineGapActive');
@@ -56,7 +56,7 @@
 
   function yieldToNative() {
     restoreGapMute();
-    video.classList.remove('sourceTimelineHidden','timelineHardGap');
+    video.classList.remove('timelineHardGap');
     video.style.visibility = 'hidden';
     overlay.hidden = true;
     viewport.classList.remove('timelineGapActive');

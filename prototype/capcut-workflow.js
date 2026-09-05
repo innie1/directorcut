@@ -103,7 +103,7 @@
       for (const clip of track.clips) if (clip.start >= b - 1e-6) clip.start = TL.snapTime(Math.max(0, clip.start - cut), state.timeline.fps);
     }
   }
-  window.DirectorCutCaptions = { sync:syncCaptionsFromTranscript, removeInRange };
+  window.DirectorCutCaptions = { sync:syncCaptionsFromTranscript, removeInRange:removeCaptionsInRange };
 
   if (typeof renderTranscript === 'function') {
     const baseRenderTranscript = renderTranscript;
@@ -305,13 +305,20 @@
   }
 
   // ---------- Source fallback must visibly respect simple timeline gaps ----------
+  // playback-gap-guard.js owns #timelineGapOverlay and repaints it on every frame,
+  // so the timeline-preview notice keeps its own node rather than sharing that one.
   const viewport = document.querySelector('.videoViewport') || video.parentElement;
-  let gapOverlay = document.querySelector('#timelineGapOverlay');
-  if (viewport && !gapOverlay) {
-    gapOverlay=document.createElement('div');
-    gapOverlay.id='timelineGapOverlay'; gapOverlay.className='timelineGapOverlay'; gapOverlay.hidden=true;
-    gapOverlay.innerHTML='<span>Gap</span>';
-    viewport.appendChild(gapOverlay);
+  let previewNotice = document.querySelector('#timelinePreviewNotice');
+  if (viewport && !previewNotice) {
+    previewNotice=document.createElement('div');
+    previewNotice.id='timelinePreviewNotice'; previewNotice.className='timelineGapOverlay'; previewNotice.hidden=true;
+    previewNotice.innerHTML='<span></span>';
+    viewport.appendChild(previewNotice);
+  }
+  function noticeLabel(text) {
+    let span = previewNotice.querySelector('span');
+    if (!span) { span=document.createElement('span'); previewNotice.appendChild(span); }
+    span.textContent=text;
   }
 
   function sourceFallbackStateAt(time) {
@@ -323,18 +330,18 @@
     return null;
   }
   function syncSourceFallback() {
-    if (!gapOverlay) return;
+    if (!previewNotice) return;
     if (window.DirectorCutProgramMonitor?.active) {
-      gapOverlay.hidden=true; video.classList.remove('sourceTimelineHidden'); return;
+      previewNotice.hidden=true; video.classList.remove('sourceTimelineHidden'); return;
     }
     const t=Number(video.currentTime||0), active=sourceFallbackStateAt(t);
-    if(!active){
-      gapOverlay.hidden=false;gapOverlay.querySelector('span').textContent='Gap';video.classList.add('sourceTimelineHidden');return;
-    }
+    // Real timeline gaps are drawn by playback-gap-guard.js; only report the cases
+    // where the Chromium source preview cannot represent the edited timeline.
+    if(!active){ previewNotice.hidden=true; video.classList.remove('sourceTimelineHidden'); return; }
     const sameSource=!active.clip.sourcePath||!state.media?.path||active.clip.sourcePath===state.media.path;
     const directTime=Math.abs(Number(active.clip.sourceIn||0)-Number(active.clip.start||0))<=TL.frameDuration(state.timeline.fps)*0.75;
-    if(sameSource&&directTime){gapOverlay.hidden=true;video.classList.remove('sourceTimelineHidden');return;}
-    gapOverlay.hidden=false;gapOverlay.querySelector('span').textContent='Timeline preview requires GES';video.classList.add('sourceTimelineHidden');
+    if(sameSource&&directTime){previewNotice.hidden=true;video.classList.remove('sourceTimelineHidden');return;}
+    previewNotice.hidden=false;noticeLabel('Timeline preview requires GES');video.classList.add('sourceTimelineHidden');
   }
   video.addEventListener('timeupdate',syncSourceFallback);
   video.addEventListener('seeking',syncSourceFallback);
