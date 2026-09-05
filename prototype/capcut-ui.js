@@ -36,5 +36,40 @@
   }
   syncTotal();
 
-  window.DirectorCutUiPass = { syncTotal };
+  // ---- Full-screen preview -------------------------------------------------
+  // Hides every panel so the program monitor fills the window, keeping only the
+  // transport. Esc leaves; there is no OS fullscreen involved, so it stays inside
+  // the app and the timeline state is untouched.
+  const FULL = 'previewFullscreen';
+  const isFull = () => document.body.classList.contains(FULL);
+
+  let toggle = document.querySelector('#previewFullscreen');
+  if (!toggle) {
+    toggle = document.createElement('button');
+    toggle.id = 'previewFullscreen';
+    toggle.type = 'button';
+    toggle.className = 'fullscreenToggle';
+    const advanced = transport.querySelector('.advancedTools');
+    if (advanced) transport.insertBefore(toggle, advanced); else transport.appendChild(toggle);
+  }
+
+  function setFull(on) {
+    document.body.classList.toggle(FULL, Boolean(on));
+    toggle.textContent = on ? '⤡  Exit full screen' : '⛶  Full screen';
+    toggle.title = on ? 'Leave full-screen preview (Esc)' : 'Fill the window with the preview';
+    // Modules size the monitor from its box, so let them re-measure.
+    window.dispatchEvent(new Event('resize'));
+    if (typeof renderTimeline === 'function' && !on) renderTimeline();
+  }
+  toggle.onclick = () => setFull(!isFull());
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !isFull()) return;
+    if (event.target?.closest?.('input,textarea,select,[contenteditable="true"]')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setFull(false);
+  }, true);
+  setFull(false);
+
+  window.DirectorCutUiPass = { syncTotal, setFullscreen:setFull, isFullscreen:isFull };
 })();

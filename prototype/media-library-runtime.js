@@ -106,7 +106,23 @@
       card.className = `mediaLibraryItem${state.selectedLibraryId === media.libraryId ? ' selected' : ''}${media.intelligence ? ' analyzed' : ''}`;
       card.dataset.mediaId = media.libraryId;
       card.draggable = true;
-      card.innerHTML = `<div class="mediaLibraryThumb"><span>${media.source==='recording'?'●':'▶'}</span></div><div class="mediaLibraryText"><strong></strong><small class="mediaMeta"></small><small class="mediaIntelligence" hidden></small></div><div class="mediaLibraryActions"><button type="button" data-media-action="append" title="Append to end of timeline">＋ Add</button><button type="button" data-media-action="insert" title="Insert at playhead and move later clips">Insert</button><button type="button" data-media-action="preview" title="Preview this source without changing the timeline">Preview</button><button type="button" data-media-action="analyze" title="Analyze shots, silence, duplicates and quality locally">Analyze</button></div>`;
+      card.innerHTML = `<div class="mediaLibraryThumb"><span class="mediaThumbGlyph">${media.source==='recording'?'●':'▶'}</span><small class="mediaThumbTime"></small><button type="button" class="mediaThumbAdd" title="Add to the end of the timeline">＋</button></div><div class="mediaLibraryText"><strong></strong><small class="mediaMeta"></small><small class="mediaIntelligence" hidden></small></div><div class="mediaLibraryActions"><button type="button" data-media-action="append" title="Append to end of timeline">＋ Add</button><button type="button" data-media-action="insert" title="Insert at playhead and move later clips">Insert</button><button type="button" data-media-action="preview" title="Preview this source without changing the timeline">Preview</button><button type="button" data-media-action="analyze" title="Analyze shots, silence, duplicates and quality locally">Analyze</button></div>`;
+      // Show a real frame rather than a glyph. A muted metadata-only <video> seeked a
+      // little way in renders its own poster locally, with no ffmpeg round trip.
+      const thumb = card.querySelector('.mediaLibraryThumb');
+      if (media.url) {
+        const frame = document.createElement('video');
+        frame.className = 'mediaThumbFrame';
+        frame.muted = true; frame.playsInline = true; frame.preload = 'metadata';
+        frame.src = `${media.url}#t=${(Math.min(1, Number(media.duration || 0) / 4) || 0.1).toFixed(2)}`;
+        frame.addEventListener('loadeddata', () => card.classList.add('hasFrame'), { once:true });
+        thumb.prepend(frame);
+      }
+      const thumbTime = card.querySelector('.mediaThumbTime');
+      const seconds = Number(media.duration || 0);
+      if (seconds > 0) thumbTime.textContent = typeof tc === 'function' ? tc(seconds).slice(0, 8) : `${seconds.toFixed(1)}s`;
+      else thumbTime.remove();
+      card.querySelector('.mediaThumbAdd').onclick = event => { event.stopPropagation(); addMediaToTimeline(media, 'append'); };
       card.querySelector('strong').textContent = media.name || 'Untitled video';
       card.querySelector('.mediaMeta').textContent = meta(media);
       const intelligence=card.querySelector('.mediaIntelligence'),summary=intelligenceText(media);if(summary){intelligence.textContent=`✦ ${summary}`;intelligence.hidden=false;}

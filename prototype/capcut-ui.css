@@ -26,12 +26,13 @@
   --warn:#e3bd64;
   --bad:#f0767d;
   --r-sm:6px; --r-md:9px; --r-lg:13px;
-  --dc-timeline-height:308px;
+  --dc-timeline-height:330px;
   /* The 188/258 panels truncated card buttons ("Overwri") and wrapped the composer
      placeholder. CapCut gives both rails more room; the centre still keeps >1000px. */
-  --dc-left:212px;
-  --dc-right:300px;
-  --dc-right-user:300px;
+  --dc-left:296px;
+  --dc-right:342px;
+  --dc-right-user:342px;
+  --dc-timeline:min(42vh,400px);
 }
 
 body{font-size:13px;color:var(--text);background:var(--bg)}
@@ -68,29 +69,49 @@ summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);o
 .wideImport{background:var(--accent-soft)!important;border-color:#2f4a72!important;color:#cfe0ff!important;font-weight:600;min-height:34px}
 .wideImport:hover{background:#1c3253!important;border-color:#41628f!important}
 
-/* CapCut-style media cards: wide thumbnail on top, then name, then actions. */
-.mediaBin{gap:9px;max-height:min(42vh,420px)}
-.mediaBinEmpty{font-size:11px;padding:14px 12px;border-radius:var(--r-md)}
-.mediaLibraryItem{grid-template-columns:minmax(0,1fr)!important;gap:7px!important;padding:8px!important;
-  border-radius:var(--r-md)!important;background:var(--panel2)!important;border-color:var(--line)!important}
-.mediaLibraryItem:hover{border-color:#3d4757!important;background:#1e222a!important}
+/* CapCut-style media bin: a grid of real frames. Click selects, the hover "+"
+   adds to the timeline, and cards drag straight onto a track. Secondary actions
+   stay hidden until a card is selected so the grid reads as pictures, not buttons. */
+.mediaBin{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important;
+  max-height:none!important;align-content:start;align-items:start}
+.mediaBinEmpty{grid-column:1/-1;font-size:11px;padding:16px 12px;border-radius:var(--r-md);line-height:1.5}
+.mediaLibraryItem{grid-template-columns:minmax(0,1fr)!important;gap:0!important;padding:0!important;
+  border-radius:var(--r-md)!important;background:var(--panel2)!important;border-color:var(--line)!important;
+  overflow:hidden;position:relative}
+.mediaLibraryItem:hover{border-color:#48546a!important;background:#1e222a!important}
 .mediaLibraryItem.selected{border-color:var(--accent)!important;background:#151d2b!important;
-  box-shadow:0 0 0 1px rgba(77,141,255,.25) inset!important}
-.mediaLibraryThumb{grid-row:auto!important;width:100%!important;height:74px!important;
-  border-radius:var(--r-sm)!important;font-size:13px!important;border-color:#2c323c!important;
-  background:linear-gradient(150deg,#232c39,#0e1218)!important}
-.mediaLibraryText strong{font-size:12px!important;color:#e9eef5!important}
-.mediaLibraryText small{font-size:10.5px!important;color:var(--dim)!important}
-.mediaLibraryText .mediaIntelligence{font-size:10px!important;color:#8fc0b3!important}
-.mediaLibraryActions{grid-column:1!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  gap:4px!important;flex-wrap:nowrap!important}
-.mediaLibraryActions button{font-size:10.5px!important;min-height:28px!important;padding:4px 6px!important;
+  box-shadow:0 0 0 1px rgba(77,141,255,.3) inset!important}
+.mediaLibraryItem[draggable="true"]{cursor:grab}
+.mediaLibraryItem[draggable="true"]:active{cursor:grabbing}
+
+.mediaLibraryThumb{grid-row:auto!important;position:relative;width:100%!important;height:auto!important;
+  aspect-ratio:16/9;border:0!important;border-radius:0!important;background:#0a0e13!important;overflow:hidden;
+  display:block!important}
+.mediaThumbFrame{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0a0e13;
+  pointer-events:none}
+.mediaThumbGlyph{position:absolute;inset:0;display:grid;place-items:center;color:#5d6b7e;font-size:17px}
+.mediaLibraryItem.hasFrame .mediaThumbGlyph{display:none}
+.mediaThumbTime{position:absolute;left:6px;bottom:6px;font-size:9.5px;color:#e8edf4;
+  background:rgba(4,6,9,.78);padding:2px 5px;border-radius:4px;letter-spacing:.2px}
+.mediaThumbAdd{position:absolute;right:6px;bottom:6px;width:28px;height:28px;min-height:0!important;
+  padding:0!important;border-radius:50%!important;font-size:15px;line-height:1;
+  background:var(--accent)!important;color:#06111f!important;border-color:var(--accent)!important;
+  opacity:0;transform:scale(.85);transition:.13s ease;font-weight:700}
+.mediaLibraryItem:hover .mediaThumbAdd,.mediaThumbAdd:focus-visible{opacity:1;transform:scale(1)}
+.mediaThumbAdd:hover{background:#6ea3ff!important}
+
+.mediaLibraryText{padding:7px 9px 8px!important;gap:2px!important}
+.mediaLibraryText strong{font-size:11.5px!important;color:#e9eef5!important}
+.mediaLibraryText small{font-size:10px!important;color:var(--dim)!important}
+.mediaLibraryText .mediaIntelligence{font-size:9.5px!important;color:#8fc0b3!important}
+.mediaLibraryActions{display:none!important}
+.mediaLibraryItem.selected .mediaLibraryActions{display:grid!important;grid-column:1!important;
+  grid-template-columns:minmax(0,1fr)!important;gap:4px!important;padding:0 9px 9px!important}
+.mediaLibraryActions button{font-size:10.5px!important;min-height:27px!important;padding:4px 6px!important;
   border-radius:var(--r-sm)!important;background:#1f242c!important;border-color:#333a45!important;color:#c3ccd9!important}
 .mediaLibraryActions button:hover{background:#2a313b!important;color:#fff!important;border-color:#4a5464!important}
-/* "Add" is the one action a new user needs; give it the full first row. */
 .mediaLibraryActions [data-media-action="append"]{grid-column:1/-1!important;background:var(--accent-soft)!important;
   border-color:#3b5c8c!important;color:#d8e7ff!important;font-weight:650!important}
-.mediaLibraryActions [data-media-action="append"]:hover{background:#1d3455!important;border-color:#4f76ab!important}
 .mediaLibraryActions [data-media-action="preview"]{display:block!important}
 
 .settingsDrawer>summary{font-size:12px;color:var(--muted);min-height:30px;display:flex;align-items:center}
@@ -229,3 +250,76 @@ summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);o
   .mediaLibraryThumb{height:62px!important}
   #time{min-width:88px!important}
 }
+
+/* ---------- smaller monitor, roomier timeline --------------------------- */
+/* The preview no longer dominates: it gives its space to the media grid, the
+   Director and the timeline, and goes full-screen on demand instead. */
+/* A grid row of ".66fr" does NOT fill the free space: when the flex factors sum to
+   less than 1 the row takes only that fraction and the remainder is left unallocated.
+   The old .78fr therefore stranded ~180px of dead black between the transport and
+   the timeline. 1fr fills it, and the recovered height goes to the timeline. */
+.center{grid-template-rows:minmax(190px,1fr) 52px auto!important}
+.monitor .videoViewport{inset:12px 16px}
+.timeline{height:var(--dc-timeline)!important;max-height:none!important;min-height:240px}
+main{height:calc(100vh - 54px - var(--dc-timeline))!important}
+
+/* ---------- no sliders -------------------------------------------------- */
+/* Zoom is buttons only: minus, plus, Fit. */
+.timelineZoom input[type=range]{display:none!important}
+.timelineZoom{gap:2px;padding:3px 4px}
+.timelineZoom button{min-width:28px}
+.timelineZoom .zoomFit{font-size:11px!important;padding:2px 9px!important}
+
+/* ---------- full-screen preview ----------------------------------------- */
+.fullscreenToggle{font-size:11.5px!important;min-height:32px!important;color:#c2cbd8!important}
+body.previewFullscreen .appHeader,
+body.previewFullscreen .left,
+body.previewFullscreen .right,
+body.previewFullscreen .timeline,
+body.previewFullscreen .transcriptPanel,
+body.previewFullscreen .floatingComposer,
+body.previewFullscreen .editorToast{display:none!important}
+body.previewFullscreen main{height:100vh!important;grid-template-columns:1fr!important}
+body.previewFullscreen .center{grid-template-rows:1fr 52px!important}
+body.previewFullscreen .monitor .videoViewport{inset:0}
+body.previewFullscreen .simplifiedTransport{background:rgba(10,12,16,.94);border-top-color:var(--line)}
+body.previewFullscreen #previewFullscreen{background:var(--accent)!important;color:#06111f!important;border-color:var(--accent)!important}
+
+/* ---------- roomier Director -------------------------------------------- */
+.right{padding:14px 13px}
+.activity{padding-top:4px}
+.message{font-size:12px!important;line-height:1.55!important;padding:10px 12px!important;margin:8px 0!important}
+.message.user{margin-left:30px}
+.right .composerRow textarea{font-size:12.5px!important;height:44px!important;min-height:44px!important;padding:11px 8px!important}
+.right .floatingComposer{padding:9px!important}
+.policyHelp{padding:7px 3px 10px!important}
+.directorPolicy button{font-size:12px!important;min-height:32px}
+.proposal{padding:12px!important;gap:10px!important}
+.proposal button{min-height:32px}
+
+/* ---------- remove what earns no space ---------------------------------- */
+/* A second "Add" beside the full-width Import button, the search-engine status
+   line, the legacy drag hint and the duplicated selection card were all noise. */
+#addMedia,
+.visualSearchMode,
+.dragHint,
+.selectionCard{display:none!important}
+.visualSearchBox{margin-bottom:4px}
+.librarySection.firstSection small{display:none}
+
+@media(max-width:1400px){
+  :root{--dc-left:250px;--dc-right:300px;--dc-right-user:300px}
+  .mediaBin{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+
+/* ---------- discreet scrollbars ----------------------------------------- */
+/* Panels scroll, but the bars stay out of the way rather than reading as sliders. */
+.left,.right,.activity,.timeline,.mediaBin{scrollbar-width:thin;scrollbar-color:#2b313b transparent}
+.left::-webkit-scrollbar,.right::-webkit-scrollbar,.activity::-webkit-scrollbar,
+.timeline::-webkit-scrollbar{width:8px;height:9px}
+.left::-webkit-scrollbar-thumb,.right::-webkit-scrollbar-thumb,.activity::-webkit-scrollbar-thumb,
+.timeline::-webkit-scrollbar-thumb{background:#2b313b;border-radius:8px}
+.left::-webkit-scrollbar-thumb:hover,.right::-webkit-scrollbar-thumb:hover,
+.timeline::-webkit-scrollbar-thumb:hover{background:#3a424f}
+.left::-webkit-scrollbar-track,.right::-webkit-scrollbar-track,
+.timeline::-webkit-scrollbar-track{background:transparent}
