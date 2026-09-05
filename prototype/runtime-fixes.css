@@ -3,6 +3,8 @@
 .timelineGapOverlay.hardGap{z-index:40!important;background:#000!important;color:transparent!important}
 .timelineGapOverlay.hardGap::before{content:'';position:absolute;inset:0;background:#000}
 .videoViewport video.timelineHardGap{opacity:0!important;visibility:hidden!important}
+/* A hidden welcome layer must never intercept editor input after import. */
+#welcomeOverlay.hidden,#welcomeOverlay[hidden],#welcomeOverlay[aria-hidden="true"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}
 .right .floatingComposer{position:relative;z-index:80;pointer-events:auto!important}
 .right .floatingComposer textarea{pointer-events:auto!important;cursor:text}
 .right .floatingComposer.composerBusy{border-color:#455a75!important}
